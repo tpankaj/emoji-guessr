@@ -17,7 +17,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         </button>
         <h2 id="help-title">How to play</h2>
         <p>Each puzzle is a Chinese phrase spelled out in emoji. Guess the phrase before you run out of tries — each puzzle shows how many you get.</p>
-        <p>Type with your Chinese (pinyin) keyboard. The empty boxes show how many characters the phrase has.</p>
+        <p>Type with your Chinese keyboard. The empty boxes show how many characters the phrase has.</p>
         <div class="example">
           <div class="row">
             <div class="tile correct">你</div>
@@ -35,7 +35,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           </p>
         </div>
         <p>
-          When you finish every puzzle, share your results — they show colours only, no answers.
+          When you finish every puzzle, share your results — they show colors only, no answers.
         </p>
         <button class="btn primary wide" onClick={onClose}>
           Let’s go

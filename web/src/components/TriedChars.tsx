@@ -2,7 +2,7 @@ import type { Guess, Mark } from "../types";
 
 const RANK: Record<Mark, number> = { absent: 0, present: 1, correct: 2 };
 
-/** Every character tried so far, coloured by its best mark (there's no on-screen keyboard to colour). */
+/** Every character tried so far, colored by its best mark (there's no on-screen keyboard to color). */
 export function TriedChars({ guesses }: { guesses: Guess[] }) {
   const best = new Map<string, Mark>();
   for (const g of guesses) {

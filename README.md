@@ -13,7 +13,7 @@ functions/   One Cloud Function, `api`, that holds the answers and checks guesse
 scripts/     check-leaks.mjs: fails the deploy if an answer ends up in the built site
 ```
 
-- **Answers never reach the browser.** `functions/src/quizzes/` is the only place they live. The site gets each puzzle's emoji, answer length and guess limit from `GET /api/quiz/<id>` (or `/api/quiz/latest`). Guesses go to `POST /api/guess`, which returns the colours, and returns the answer only once the puzzle is solved or out of guesses.
+- **Answers never reach the browser.** `functions/src/quizzes/` is the only place they live. The site gets each puzzle's emoji, answer length and guess limit from `GET /api/quiz/<id>` (or `/api/quiz/latest`). Guesses go to `POST /api/guess`, which returns the colors, and returns the answer only once the puzzle is solved or out of guesses.
 - **No database.** The server signs a small token holding the guess count (HMAC with `TOKEN_SECRET`). The browser stores it with progress in `localStorage`, separately for each quiz. A forged token, or one from a different quiz or puzzle, is rejected.
 - Firebase Hosting rewrites `/api/**` to the function, so everything runs on one domain.
 
