@@ -61,6 +61,11 @@ npm run deploy          # test + build + check:leaks + firebase deploy (function
 npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--emulator] [--yes] [--force]
 ```
 
+## Dependency notes
+
+- `functions/package.json` has `"overrides": { "rimraf": "^6.1.4" }`. Google's Firestore client (`@google-cloud/firestore` → `google-gax` 5.x and `gaxios` 7.1.x) lists `rimraf` 5 but never calls it, and `rimraf` 5 pulls in vulnerable `glob` 10 / `minimatch` 9. The override clears those Dependabot alerts without changing any Google library version. **Remove it** once `firebase-admin`'s Firestore dependency no longer depends on `rimraf` (check with `npm ls rimraf --prefix functions`).
+- Prefer this kind of targeted override over `npm audit fix` when the fix would downgrade libraries.
+
 ## Local development details
 
 - To run the app: start `npm run emulators` in the background, wait for "All emulators ready" in its output, then open <http://localhost:5050> in the browser. Don't commit tool-specific launch configs (e.g. `.claude/` is git-ignored).
