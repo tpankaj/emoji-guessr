@@ -13,7 +13,6 @@ export interface PublicQuiz {
   id: string;
   title: string;
   maxGuesses: number;
-  hintAfter: number;
   questions: PublicQuestion[];
 }
 
@@ -29,7 +28,6 @@ export interface GuessResponse {
   done: boolean;
   guessesUsed: number;
   token: string;
-  hint?: string;
   reveal?: Reveal;
 }
 
@@ -41,7 +39,6 @@ export interface Guess {
 export interface QuestionState {
   guesses: Guess[];
   token?: string;
-  hint?: string;
   done: boolean;
   solved: boolean;
   reveal?: Reveal;

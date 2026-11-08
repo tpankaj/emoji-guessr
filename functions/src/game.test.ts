@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HINT_AFTER, MAX_GUESSES, handleGuess, publicQuiz, type GuessResponse } from "./game";
+import { MAX_GUESSES, handleGuess, publicQuiz, type GuessResponse } from "./game";
 import { QUIZ, type Quiz } from "./quiz";
 import { score } from "./scoring";
 import { signToken, verifyToken } from "./token";
@@ -59,7 +59,7 @@ describe("handleGuess", () => {
   const quiz: Quiz = {
     id: "t",
     title: "Test",
-    questions: [{ id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "go" }],
+    questions: [{ id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test" }],
   };
   const guess = (g: string, token?: string) =>
     handleGuess({ questionId: 7, guess: g, token }, SECRET, quiz);
@@ -81,7 +81,6 @@ describe("handleGuess", () => {
     const first = ok(guess("加班"));
     expect(first).toMatchObject({ solved: false, done: false, guessesUsed: 1 });
     expect(first.reveal).toBeUndefined();
-    expect(first.hint).toBeUndefined();
 
     const second = ok(guess(" 加油 ", first.token));
     expect(second).toMatchObject({ solved: true, done: true, guessesUsed: 2 });
@@ -90,15 +89,16 @@ describe("handleGuess", () => {
     expect(guess("加油", second.token).status).toBe(409);
   });
 
-  it("gives a pinyin hint, then reveals after the last wrong guess", () => {
+  it("gives no answer, pinyin or meaning until the last wrong guess", () => {
     let token: string | undefined;
     let last!: GuessResponse;
     for (let i = 1; i <= MAX_GUESSES; i++) {
       last = ok(guess("你好", token));
       token = last.token;
-      if (i < HINT_AFTER) expect(last.hint).toBeUndefined();
-      if (i >= HINT_AFTER && i < MAX_GUESSES) expect(last.hint).toBe("jiā yóu");
-      if (i < MAX_GUESSES) expect(last.reveal).toBeUndefined();
+      if (i < MAX_GUESSES) {
+        const json = JSON.stringify(last);
+        for (const secret of ["加油", "jiā yóu", "keep going test"]) expect(json).not.toContain(secret);
+      }
     }
     expect(last).toMatchObject({ solved: false, done: true, guessesUsed: MAX_GUESSES });
     expect(last.reveal?.answer).toBe("加油");

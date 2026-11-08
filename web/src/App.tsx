@@ -125,7 +125,6 @@ export function App() {
             [id]: {
               guesses: [...prev.guesses, { text: raw, marks: r.marks }],
               token: r.token,
-              hint: r.hint ?? prev.hint,
               done: r.done,
               solved: r.solved,
               reveal: r.reveal,
@@ -167,12 +166,6 @@ export function App() {
             shake={shake}
             animateRow={animateRow}
           />
-
-          {qs.hint && !qs.done && (
-            <div class="hint">
-              Hint: <span lang="zh-Latn-pinyin">{qs.hint}</span>
-            </div>
-          )}
 
           {qs.done ? (
             <RevealCard state={qs} isLast={current === total - 1} delayMs={revealDelay} onNext={next} />
@@ -219,7 +212,7 @@ export function App() {
         </main>
       )}
 
-      {showHelp && <HelpModal maxGuesses={quiz.maxGuesses} hintAfter={quiz.hintAfter} onClose={closeHelp} />}
+      {showHelp && <HelpModal maxGuesses={quiz.maxGuesses} onClose={closeHelp} />}
       {toast && (
         <div class="toast" key={toast.id} role="status">
           {toast.msg}

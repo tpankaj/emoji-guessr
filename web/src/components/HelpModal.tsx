@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 
-export function HelpModal({ maxGuesses, hintAfter, onClose }: { maxGuesses: number; hintAfter: number; onClose: () => void }) {
+export function HelpModal({ maxGuesses, onClose }: { maxGuesses: number; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     closeRef.current?.focus();
@@ -35,8 +35,7 @@ export function HelpModal({ maxGuesses, hintAfter, onClose }: { maxGuesses: numb
           </p>
         </div>
         <p>
-          After {hintAfter} wrong guesses you get a pinyin hint. When you finish every puzzle, share your
-          results — they show colours only, no answers.
+          When you finish every puzzle, share your results — they show colours only, no answers.
         </p>
         <button class="btn primary wide" onClick={onClose}>
           Let’s go
