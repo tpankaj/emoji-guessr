@@ -394,6 +394,7 @@ body {
   grid-template-columns: auto 1fr auto;
   grid-template-areas:
     "emoji answer badge"
+    "emoji pinyin pinyin"
     "emoji meaning meaning";
   column-gap: 12px;
   align-items: center;
@@ -410,10 +411,8 @@ body {
   font-weight: 700;
 }
 .answers .pinyin {
-  grid-area: answer;
-  justify-self: end;
+  grid-area: pinyin;
   color: var(--muted);
-  margin-right: 8px;
 }
 .answers .meaning {
   grid-area: meaning;
