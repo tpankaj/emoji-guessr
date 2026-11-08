@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 
-export function HelpModal({ maxGuesses, onClose }: { maxGuesses: number; onClose: () => void }) {
+export function HelpModal({ onClose }: { onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     closeRef.current?.focus();
@@ -16,7 +16,7 @@ export function HelpModal({ maxGuesses, onClose }: { maxGuesses: number; onClose
           ×
         </button>
         <h2 id="help-title">How to play</h2>
-        <p>Each puzzle is a Chinese phrase spelled out in emoji. Guess the phrase in {maxGuesses} tries.</p>
+        <p>Each puzzle is a Chinese phrase spelled out in emoji. Guess the phrase before you run out of tries — each puzzle shows how many you get.</p>
         <p>Type with your Chinese (pinyin) keyboard. The empty boxes show how many characters the phrase has.</p>
         <div class="example">
           <div class="row">

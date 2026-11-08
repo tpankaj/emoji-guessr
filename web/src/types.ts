@@ -7,12 +7,12 @@ export interface PublicQuestion {
   id: number;
   emoji: string;
   length: number;
+  maxGuesses: number;
 }
 
 export interface PublicQuiz {
   id: string;
   title: string;
-  maxGuesses: number;
   questions: PublicQuestion[];
 }
 

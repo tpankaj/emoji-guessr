@@ -1,14 +1,15 @@
-import { QUIZ, type Quiz } from "./quiz";
+import { QUIZ, type Question, type Quiz } from "./quiz";
 import { HAN_ONLY, chars, score, type Mark } from "./scoring";
 import { signToken, verifyToken, type TokenState } from "./token";
 
-export const MAX_GUESSES = 5;
+export const DEFAULT_MAX_GUESSES = 5;
+
+export const maxGuessesFor = (q: Question) => q.maxGuesses ?? DEFAULT_MAX_GUESSES;
 
 export interface PublicQuiz {
   id: string;
   title: string;
-  maxGuesses: number;
-  questions: { id: number; emoji: string; length: number }[];
+  questions: { id: number; emoji: string; length: number; maxGuesses: number }[];
 }
 
 export interface Reveal {
@@ -35,11 +36,11 @@ export function publicQuiz(quiz: Quiz = QUIZ): PublicQuiz {
   return {
     id: quiz.id,
     title: quiz.title,
-    maxGuesses: MAX_GUESSES,
     questions: quiz.questions.map((q) => ({
       id: q.id,
       emoji: q.emoji,
       length: chars(q.answer).length,
+      maxGuesses: maxGuessesFor(q),
     })),
   };
 }
@@ -66,12 +67,13 @@ export function handleGuess(input: unknown, secret: string, quiz: Quiz = QUIZ): 
     }
     state = parsed;
   }
-  if (state.done || state.n >= MAX_GUESSES) return fail(409, "No guesses left for this question");
+  const max = maxGuessesFor(question);
+  if (state.done || state.n >= max) return fail(409, "No guesses left for this question");
 
   const marks = score(g, question.answer);
   const solved = marks.every((m) => m === "correct");
   const n = state.n + 1;
-  const done = solved || n >= MAX_GUESSES;
+  const done = solved || n >= max;
 
   const body: GuessResponse = {
     marks,

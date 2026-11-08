@@ -44,7 +44,7 @@ export function Summary({ quiz, progress, notify }: Props) {
               <span class="pinyin">{s?.reveal?.pinyin}</span>
               <span class="meaning">{s?.reveal?.meaning}</span>
               <span class={`badge ${s?.solved ? "ok" : "miss"}`}>
-                {s?.solved ? `${s.guesses.length}/${quiz.maxGuesses}` : "✗"}
+                {s?.solved ? `${s.guesses.length}/${q.maxGuesses}` : "✗"}
               </span>
             </li>
           );

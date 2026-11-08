@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_GUESSES, handleGuess, publicQuiz, type GuessResponse } from "./game";
+import { DEFAULT_MAX_GUESSES, handleGuess, publicQuiz, type GuessResponse } from "./game";
 import { QUIZ, type Quiz } from "./quiz";
 import { score } from "./scoring";
 import { signToken, verifyToken } from "./token";
@@ -51,7 +51,7 @@ describe("publicQuiz", () => {
       expect(json).not.toContain(q.pinyin);
       expect(json).not.toContain(q.meaning);
     }
-    expect(publicQuiz().questions[0]).toEqual({ id: 1, emoji: "➕⛽️", length: 2 });
+    expect(publicQuiz().questions[0]).toEqual({ id: 1, emoji: "➕⛽️", length: 2, maxGuesses: 2 });
   });
 });
 
@@ -59,7 +59,10 @@ describe("handleGuess", () => {
   const quiz: Quiz = {
     id: "t",
     title: "Test",
-    questions: [{ id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test" }],
+    questions: [
+      { id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test" },
+      { id: 9, emoji: "🐟", answer: "摸鱼", pinyin: "mō yú", meaning: "slacking", maxGuesses: 2 },
+    ],
   };
   const guess = (g: string, token?: string) =>
     handleGuess({ questionId: 7, guess: g, token }, SECRET, quiz);
@@ -92,17 +95,27 @@ describe("handleGuess", () => {
   it("gives no answer, pinyin or meaning until the last wrong guess", () => {
     let token: string | undefined;
     let last!: GuessResponse;
-    for (let i = 1; i <= MAX_GUESSES; i++) {
+    for (let i = 1; i <= DEFAULT_MAX_GUESSES; i++) {
       last = ok(guess("你好", token));
       token = last.token;
-      if (i < MAX_GUESSES) {
+      if (i < DEFAULT_MAX_GUESSES) {
         const json = JSON.stringify(last);
         for (const secret of ["加油", "jiā yóu", "keep going test"]) expect(json).not.toContain(secret);
       }
     }
-    expect(last).toMatchObject({ solved: false, done: true, guessesUsed: MAX_GUESSES });
+    expect(last).toMatchObject({ solved: false, done: true, guessesUsed: DEFAULT_MAX_GUESSES });
     expect(last.reveal?.answer).toBe("加油");
     expect(guess("加油", token).status).toBe(409);
+  });
+
+  it("uses each puzzle's own guess limit", () => {
+    const first = ok(handleGuess({ questionId: 9, guess: "你好" }, SECRET, quiz));
+    expect(first).toMatchObject({ done: false, guessesUsed: 1 });
+    expect(first.reveal).toBeUndefined();
+    const second = ok(handleGuess({ questionId: 9, guess: "你好", token: first.token }, SECRET, quiz));
+    expect(second).toMatchObject({ solved: false, done: true, guessesUsed: 2 });
+    expect(second.reveal?.answer).toBe("摸鱼");
+    expect(handleGuess({ questionId: 9, guess: "摸鱼", token: second.token }, SECRET, quiz).status).toBe(409);
   });
 
   it("rejects a token from another question or quiz version", () => {

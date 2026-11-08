@@ -158,7 +158,7 @@ export function App() {
 
           <Board
             length={question.length}
-            maxGuesses={quiz.maxGuesses}
+            maxGuesses={question.maxGuesses}
             guesses={qs.guesses}
             typed={typed}
             active={!qs.done}
@@ -205,14 +205,14 @@ export function App() {
               </form>
               <TriedChars guesses={qs.guesses} />
               <div class="guesses-left muted">
-                {quiz.maxGuesses - qs.guesses.length} of {quiz.maxGuesses} guesses left
+                {question.maxGuesses - qs.guesses.length} of {question.maxGuesses} guesses left
               </div>
             </>
           )}
         </main>
       )}
 
-      {showHelp && <HelpModal maxGuesses={quiz.maxGuesses} onClose={closeHelp} />}
+      {showHelp && <HelpModal onClose={closeHelp} />}
       {toast && (
         <div class="toast" key={toast.id} role="status">
           {toast.msg}

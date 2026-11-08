@@ -14,7 +14,8 @@ export const api = onRequest(
     res.set("Cache-Control", "no-store");
 
     if (req.method === "GET" && path === "/quiz") {
-      res.set("Cache-Control", "public, max-age=60");
+      // Not cached (no-store above): a stale puzzle list paired with a freshly
+      // deployed server would show the wrong lengths or guess limits.
       res.json(publicQuiz());
       return;
     }
