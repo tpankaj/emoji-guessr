@@ -1,7 +1,23 @@
+# Dependencies and build output
 node_modules/
 web/dist/
 functions/lib/
+coverage/
+*.tsbuildinfo
+
+# Secrets and local-only config
 *.local
+.env
+.env.*
+.runtimeconfig.json
+*-firebase-adminsdk-*.json
+service-account*.json
+.claude/settings.local.json
+
+# Firebase emulator / CLI state and logs
 .firebase/
 *-debug.log
+npm-debug.log*
+
+# OS
 .DS_Store
