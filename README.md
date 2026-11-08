@@ -2,7 +2,7 @@
 
 Guess the Chinese phrase hidden in the emoji. ➕⛽️ is 加油, “add oil”: keep going!
 
-Each puzzle gives you a few guesses. After each one, every character turns green (right spot), gold (in the phrase, wrong spot) or gray (not in the phrase). When you finish, share your result as a grid of colored squares that gives nothing away.
+Each puzzle gives you a few guesses, typed in simplified or traditional characters. After each one, every character turns green (right spot), gold (in the phrase, wrong spot) or gray (not in the phrase). When you finish, share your result as a grid of colored squares that gives nothing away.
 
 **Play it at [emojiguessr.io](https://emojiguessr.io).**
 

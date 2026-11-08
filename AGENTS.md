@@ -36,6 +36,7 @@ quizzes/             git-ignored local quiz files (working copies; Firestore is 
 
 ## Architecture and invariants
 
+- **Simplified and traditional both count.** `score()` converts guess and answer to simplified one character at a time (`toSimplified` in `functions/src/scoring.ts`, OpenCC data via `opencc-js`, including Taiwan and Hong Kong variants), so 摸魚 solves 摸鱼 and lengths never change. Store answers in simplified; the answer card shows the stored form.
 - **Answers never reach the browser before a puzzle ends.** `GET /api/quiz/<id|latest>` returns only `{id, questions: [{id, emoji, length, maxGuesses}]}`. `POST /api/guess {quizId, questionId, guess, token}` returns `{marks, solved, done, guessesUsed, token, reveal?}`; `reveal` (answer, pinyin, meaning) only when solved or out of guesses. There is no hint.
 - **Progress needs no database.** The token is `base64url(JSON {v: quizId, q: questionId, n: guessesUsed, done}).HMAC-SHA256` with secret `TOKEN_SECRET`. Tokens are bound to quiz + question. Replaying an older token can grant extra guesses but never the answer; this is accepted (honor system, like clearing localStorage).
 - **Quizzes live in Firestore**, collection `quizzes`, document id = quiz id (`"1"`, `"2"`, …), fields `published` (bool) and `questions` (array). Every puzzle requires `id`, `emoji`, `answer` (Chinese characters only), `pinyin`, `meaning`, `maxGuesses` — no defaults.

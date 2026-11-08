@@ -10,7 +10,7 @@ import {
   type GuessResponse,
 } from "./game";
 import type { Quiz } from "./types";
-import { score } from "./scoring";
+import { score, toSimplified } from "./scoring";
 import { signToken, verifyToken } from "./token";
 
 const SECRET = "test-secret";
@@ -28,6 +28,20 @@ describe("score", () => {
     expect(score("人人好", "好大人")).toEqual(["present", "absent", "present"]);
     expect(score("人人人", "人山海")).toEqual(["correct", "absent", "absent"]);
     expect(score("山人人", "人海人")).toEqual(["absent", "present", "correct"]);
+  });
+
+  it("treats traditional and simplified forms as the same character", () => {
+    expect(score("摸魚", "摸鱼")).toEqual(["correct", "correct"]);
+    expect(score("魚摸", "摸鱼")).toEqual(["present", "present"]);
+    expect(score("測試題目", "测试题目")).toEqual(["correct", "correct", "correct", "correct"]);
+    // mixed input, and answers stored in traditional
+    expect(score("測试", "测試")).toEqual(["correct", "correct"]);
+    // Taiwan / Hong Kong variants and two-to-one merges
+    expect(score("為裡", "为里")).toEqual(["correct", "correct"]);
+    expect(score("爲裏", "为里")).toEqual(["correct", "correct"]);
+    expect(score("發髮", "发发")).toEqual(["correct", "correct"]);
+    // a wrong character is still wrong in either script
+    expect(score("摸蝦", "摸鱼")).toEqual(["correct", "absent"]);
   });
 
   it("handles repeated characters in the answer", () => {
@@ -168,6 +182,14 @@ describe("handleGuess", () => {
     expect(ok(guessIn("2", 7, "你好")).reveal?.answer).toBe("你好");
   });
 
+  it("accepts the answer typed in traditional characters", () => {
+    const r = ok(guess("加油"));
+    expect(r.solved).toBe(true);
+    const t = ok(guessIn("1", 9, "摸魚"));
+    expect(t).toMatchObject({ solved: true, done: true, marks: ["correct", "correct"] });
+    expect(t.reveal?.answer).toBe("摸鱼");
+  });
+
   it("reveals only when solved", () => {
     const first = ok(guess("加班"));
     expect(first).toMatchObject({ solved: false, done: false, guessesUsed: 1 });
@@ -240,5 +262,13 @@ describe("checkUpdate", () => {
     expect(checkUpdate(sampleQuiz, withQuestion(0, { answer: "加班" })).join()).toMatch(/can't change its answer/);
     expect(checkUpdate(sampleQuiz, withQuestion(1, { maxGuesses: 6 })).join()).toMatch(/can't change its maxGuesses/);
     expect(checkUpdate(sampleQuiz, withQuestion(1, { emoji: "🐍" })).join()).toMatch(/can't change its emoji/);
+  });
+});
+
+describe("toSimplified", () => {
+  it("converts one character at a time, keeping the length", () => {
+    expect(toSimplified("電腦遊戲")).toBe("电脑游戏");
+    expect(toSimplified("加油")).toBe("加油");
+    expect(Array.from(toSimplified("乾淨的麵條")).length).toBe(5);
   });
 });
