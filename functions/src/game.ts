@@ -1,10 +1,6 @@
-import { QUIZ, type Question, type Quiz } from "./quiz";
+import { QUIZ, type Quiz } from "./quiz";
 import { HAN_ONLY, chars, score, type Mark } from "./scoring";
 import { signToken, verifyToken, type TokenState } from "./token";
-
-export const DEFAULT_MAX_GUESSES = 5;
-
-export const maxGuessesFor = (q: Question) => q.maxGuesses ?? DEFAULT_MAX_GUESSES;
 
 export interface PublicQuiz {
   id: string;
@@ -40,7 +36,7 @@ export function publicQuiz(quiz: Quiz = QUIZ): PublicQuiz {
       id: q.id,
       emoji: q.emoji,
       length: chars(q.answer).length,
-      maxGuesses: maxGuessesFor(q),
+      maxGuesses: q.maxGuesses,
     })),
   };
 }
@@ -67,7 +63,7 @@ export function handleGuess(input: unknown, secret: string, quiz: Quiz = QUIZ): 
     }
     state = parsed;
   }
-  const max = maxGuessesFor(question);
+  const max = question.maxGuesses;
   if (state.done || state.n >= max) return fail(409, "No guesses left for this question");
 
   const marks = score(g, question.answer);

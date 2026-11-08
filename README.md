@@ -1,7 +1,7 @@
 # Emoji Guesser
 
 A Wordle-style guessing game: each puzzle is a Chinese phrase written in emoji (➕⛽️ → 加油).
-Players get a limited number of guesses per puzzle (5 unless the puzzle sets its own `maxGuesses`), see 🟩🟨⬜ feedback per character, and share a spoiler-free result string at the end.
+Each puzzle sets its own guess limit, see 🟩🟨⬜ feedback per character, and share a spoiler-free result string at the end.
 
 ## How it's built
 
@@ -17,7 +17,7 @@ scripts/     check-leaks.mjs: fails the deploy if an answer ends up in the built
 
 ## Adding puzzles
 
-Edit `functions/src/quiz.ts` and append to `questions` with a new unique `id`. Answers must be Chinese characters only. Set `maxGuesses` on a puzzle to change its guess limit (default 5). If you change puzzles after people have started playing, bump the quiz `id` (e.g. `"v2"`) so old saved progress resets.
+Edit `functions/src/quiz.ts` and append to `questions` with a new unique `id`. Answers must be Chinese characters only. Every puzzle needs a `maxGuesses` (its guess limit; there is no default). If you change puzzles after people have started playing, bump the quiz `id` (e.g. `"v2"`) so old saved progress resets.
 
 ## Local development
 

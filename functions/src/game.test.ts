@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_MAX_GUESSES, handleGuess, publicQuiz, type GuessResponse } from "./game";
+import { handleGuess, publicQuiz, type GuessResponse } from "./game";
 import { QUIZ, type Quiz } from "./quiz";
 import { score } from "./scoring";
 import { signToken, verifyToken } from "./token";
@@ -60,7 +60,7 @@ describe("handleGuess", () => {
     id: "t",
     title: "Test",
     questions: [
-      { id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test" },
+      { id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test", maxGuesses: 5 },
       { id: 9, emoji: "🐟", answer: "摸鱼", pinyin: "mō yú", meaning: "slacking", maxGuesses: 2 },
     ],
   };
@@ -95,15 +95,15 @@ describe("handleGuess", () => {
   it("gives no answer, pinyin or meaning until the last wrong guess", () => {
     let token: string | undefined;
     let last!: GuessResponse;
-    for (let i = 1; i <= DEFAULT_MAX_GUESSES; i++) {
+    for (let i = 1; i <= 5; i++) {
       last = ok(guess("你好", token));
       token = last.token;
-      if (i < DEFAULT_MAX_GUESSES) {
+      if (i < 5) {
         const json = JSON.stringify(last);
         for (const secret of ["加油", "jiā yóu", "keep going test"]) expect(json).not.toContain(secret);
       }
     }
-    expect(last).toMatchObject({ solved: false, done: true, guessesUsed: DEFAULT_MAX_GUESSES });
+    expect(last).toMatchObject({ solved: false, done: true, guessesUsed: 5 });
     expect(last.reveal?.answer).toBe("加油");
     expect(guess("加油", token).status).toBe(409);
   });
