@@ -21,7 +21,7 @@ export function Summary({ quiz, progress, notify }: Props) {
   return (
     <div class="summary">
       <h2>
-        {solved === total ? "全对！" : solved === 0 ? "再接再厉！" : "完成！"} You solved {solved} of {total}
+        {solved === total ? "全对！" : solved === 0 ? "加油！" : "完成！"} You solved {solved} of {total}
       </h2>
 
       <pre class="share-preview" aria-label="Share text">

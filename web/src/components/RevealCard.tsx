@@ -21,7 +21,7 @@ export function RevealCard({ state, isLast, delayMs, onNext }: Props) {
   if (!state.reveal) return null;
   const { answer, pinyin, meaning } = state.reveal;
   const n = state.guesses.length;
-  const headline = state.solved ? PRAISE[Math.min(n, PRAISE.length) - 1] : "下次努力！";
+  const headline = state.solved ? PRAISE[Math.min(n, PRAISE.length) - 1] : "下次加油！";
 
   return (
     <div class="reveal" style={{ animationDelay: `${delayMs}ms` }} aria-live="polite">

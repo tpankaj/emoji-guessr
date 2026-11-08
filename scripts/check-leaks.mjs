@@ -21,7 +21,12 @@ const walk = (dir) => {
   }
 };
 walk("web/dist");
-const bundle = files.map((f) => [f, readFileSync(f, "utf8")]);
+// UI phrases that contain an answer but are fine to ship (e.g. encouragement shown after a
+// puzzle ends). They're removed before searching, so the answer elsewhere still counts as a leak.
+// Longest first, so a phrase isn't partly removed by a shorter one it contains.
+const ALLOWED_PHRASES = ["下次加油！", "加油！"].sort((a, b) => b.length - a.length);
+const stripAllowed = (text) => ALLOWED_PHRASES.reduce((t, p) => t.split(p).join(""), text);
+const bundle = files.map((f) => [f, stripAllowed(readFileSync(f, "utf8"))]);
 
 let failed = false;
 for (const s of secrets) {
