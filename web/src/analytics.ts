@@ -5,7 +5,7 @@
  * Analytics & Logs → Web Analytics → your site → the JS snippet's "token" value.
  * The token is public (it ends up in the page anyway). Empty = analytics off.
  */
-export const CLOUDFLARE_ANALYTICS_TOKEN = "";
+export const CLOUDFLARE_ANALYTICS_TOKEN = "ededcb47c516452dbdecaa4dbc8da15c";
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 let loaded = false;
