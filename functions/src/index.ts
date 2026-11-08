@@ -1,7 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
-import { findQuiz, handleGuess, publicQuiz, validateQuizzes, type GuessResponse } from "./game";
+import { findQuiz, handleGuess, playableQuizzes, publicQuiz, validateQuizzes, type GuessResponse } from "./game";
 import { QUIZZES } from "./quizzes";
 
 // Set in production with: firebase functions:secrets:set TOKEN_SECRET
@@ -11,6 +11,9 @@ const TOKEN_SECRET = defineSecret("TOKEN_SECRET");
 // Refuse to start with broken quiz data (the tests check this too, before deploy).
 const problems = validateQuizzes(QUIZZES);
 if (problems.length) throw new Error(`Invalid quiz data:\n${problems.join("\n")}`);
+
+// Drafts (published: false) are playable only in the local emulator, never on the live site.
+const PLAYABLE = playableQuizzes(QUIZZES, process.env.FUNCTIONS_EMULATOR === "true");
 
 /**
  * Structured log lines: each lands in Cloud Logging with `jsonPayload.event` set,
@@ -33,7 +36,7 @@ export const api = onRequest(
       const quizMatch = /^\/quiz\/([^/]+)$/.exec(path);
       if (req.method === "GET" && quizMatch) {
         const requested = decodeURIComponent(quizMatch[1]);
-        const quiz = findQuiz(requested);
+        const quiz = findQuiz(requested, PLAYABLE);
         logger.info("quiz_load", { event: "quiz_load", requested: clip(requested), quizId: quiz?.id ?? null });
         if (!quiz) {
           res.status(404).json({ error: "Quiz not found" });
@@ -45,7 +48,7 @@ export const api = onRequest(
 
       if (req.method === "POST" && path === "/guess") {
         const { quizId, questionId, guess } = (req.body ?? {}) as Record<string, unknown>;
-        const result = handleGuess(req.body, TOKEN_SECRET.value());
+        const result = handleGuess(req.body, TOKEN_SECRET.value(), PLAYABLE);
         if (result.status === 200) {
           const r = result.body as GuessResponse;
           logger.info("guess", {

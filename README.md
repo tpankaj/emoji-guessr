@@ -19,11 +19,15 @@ scripts/     check-leaks.mjs: fails the deploy if an answer ends up in the built
 
 ## Publishing a new quiz
 
-1. Copy `functions/src/quizzes/1.ts` to the next number (e.g. `2.ts`) and set `id: "2"`.
+1. Copy `functions/src/quizzes/1.ts` to the next number (e.g. `2.ts`), set `id: "2"` and **`published: false`**.
 2. Fill in its puzzles. Each needs a unique `id`, an `answer` in Chinese characters only, `pinyin`, `meaning`, and a `maxGuesses` (there is no default).
-3. Import it in `functions/src/quizzes/index.ts` and add it to the **end** of `QUIZZES`. The last entry is what `/` plays.
+3. Import it in `functions/src/quizzes/index.ts` and add it to the **end** of `QUIZZES`.
+4. Test it locally with `npm run emulators` at `http://localhost:5050/q/2`. Drafts are playable there, but never on the live site.
+5. When it's ready, set `published: true` and `npm run deploy`. `/` plays the newest **published** quiz.
 
-**Never remove a published quiz or change its answers or puzzles** — shared `/q/<id>` links must keep working, and players' saved progress refers to them. Fixing a typo in a pinyin or meaning is fine. `npm test` checks the quiz data (unique ids, Chinese-only answers, guess limits) and runs before every deploy.
+A draft can be deployed safely: on the live site it doesn't exist (`/q/<id>` shows "doesn't exist", guesses are rejected) and `/` keeps playing the newest published quiz.
+
+**Never unpublish or remove a published quiz, or change its answers or puzzles** — shared `/q/<id>` links must keep working, and players' saved progress refers to them. Fixing a typo in a pinyin or meaning is fine. `npm test` checks the quiz data (unique ids, Chinese-only answers, guess limits, a `published` flag on every quiz, at least one published quiz) and runs before every deploy.
 
 ## Local development
 

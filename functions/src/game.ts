@@ -28,9 +28,18 @@ export interface Result {
   body: GuessResponse | { error: string };
 }
 
-/** Looks up a quiz by id, or the newest one for "latest". */
+/**
+ * The quizzes players can reach: published ones only, plus drafts when `includeDrafts`
+ * (the local emulator), so drafts can be tested at /q/<id> before publishing.
+ */
+export function playableQuizzes(quizzes: Quiz[], includeDrafts: boolean): Quiz[] {
+  return includeDrafts ? quizzes : quizzes.filter((q) => q.published);
+}
+
+/** Looks up a quiz by id, or for "latest" the newest *published* one (never a draft). */
 export function findQuiz(id: string, quizzes: Quiz[] = QUIZZES): Quiz | undefined {
-  return id === "latest" ? quizzes.at(-1) : quizzes.find((q) => q.id === id);
+  if (id === "latest") return quizzes.filter((q) => q.published).at(-1);
+  return quizzes.find((q) => q.id === id);
 }
 
 /** What the browser is allowed to see: no answers, pinyin or meanings. */
@@ -55,6 +64,7 @@ export function validateQuizzes(quizzes: Quiz[]): string[] {
     if (quizIds.has(quiz.id)) errors.push(`quiz "${quiz.id}": duplicate id`);
     quizIds.add(quiz.id);
     if (quiz.questions.length === 0) errors.push(`quiz "${quiz.id}": has no puzzles`);
+    if (typeof quiz.published !== "boolean") errors.push(`quiz "${quiz.id}": published must be true or false`);
 
     const questionIds = new Set<number>();
     for (const q of quiz.questions) {
@@ -67,6 +77,9 @@ export function validateQuizzes(quizzes: Quiz[]): string[] {
         errors.push(`${where}: missing emoji, pinyin or meaning`);
       }
     }
+  }
+  if (quizzes.length > 0 && !quizzes.some((q) => q.published)) {
+    errors.push(`no published quiz: "/" would have nothing to play`);
   }
   return errors;
 }

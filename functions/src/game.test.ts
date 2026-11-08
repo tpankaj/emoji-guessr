@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findQuiz, handleGuess, publicQuiz, validateQuizzes, type GuessResponse } from "./game";
+import { findQuiz, handleGuess, playableQuizzes, publicQuiz, validateQuizzes, type GuessResponse } from "./game";
 import { QUIZZES } from "./quizzes";
 import type { Quiz } from "./quizzes/types";
 import { score } from "./scoring";
@@ -64,9 +64,9 @@ describe("validateQuizzes", () => {
   it("reports bad data", () => {
     const q = { id: 1, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hi", maxGuesses: 3 };
     const errors = validateQuizzes([
-      { id: "1", questions: [q, { ...q, answer: "hi" }] },
-      { id: "1", questions: [{ ...q, id: 2, maxGuesses: 0 }, { ...q, id: 2 }] },
-      { id: "v3", questions: [] },
+      { id: "1", published: true, questions: [q, { ...q, answer: "hi" }] },
+      { id: "1", published: false, questions: [{ ...q, id: 2, maxGuesses: 0 }, { ...q, id: 2 }] },
+      { id: "v3", published: "yes" as unknown as boolean, questions: [] },
     ]);
     expect(errors.join("\n")).toMatch(/puzzle 1: duplicate puzzle id/);
     expect(errors.join("\n")).toMatch(/answer must be Chinese/);
@@ -74,6 +74,13 @@ describe("validateQuizzes", () => {
     expect(errors.join("\n")).toMatch(/maxGuesses must be/);
     expect(errors.join("\n")).toMatch(/quiz "v3": id must be a number/);
     expect(errors.join("\n")).toMatch(/quiz "v3": has no puzzles/);
+    expect(errors.join("\n")).toMatch(/quiz "v3": published must be true or false/);
+  });
+
+  it("requires at least one published quiz", () => {
+    const q = { id: 1, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hi", maxGuesses: 3 };
+    expect(validateQuizzes([{ id: "1", published: false, questions: [q] }]).join("\n")).toMatch(/no published quiz/);
+    expect(validateQuizzes([{ id: "1", published: true, questions: [q] }])).toEqual([]);
   });
 });
 
@@ -81,6 +88,7 @@ describe("handleGuess", () => {
   const quizzes: Quiz[] = [
     {
       id: "1",
+      published: true,
       questions: [
         { id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test", maxGuesses: 5 },
         { id: 9, emoji: "🐟", answer: "摸鱼", pinyin: "mō yú", meaning: "slacking", maxGuesses: 2 },
@@ -88,7 +96,13 @@ describe("handleGuess", () => {
     },
     {
       id: "2",
+      published: true,
       questions: [{ id: 7, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hello", maxGuesses: 3 }],
+    },
+    {
+      id: "3",
+      published: false,
+      questions: [{ id: 1, emoji: "📝", answer: "草稿", pinyin: "cǎo gǎo", meaning: "draft", maxGuesses: 3 }],
     },
   ];
   const guessIn = (quizId: string, questionId: number, g: string, token?: string) =>
@@ -99,14 +113,30 @@ describe("handleGuess", () => {
     return r.body as GuessResponse;
   };
 
-  it("finds quizzes by id, or the newest for latest", () => {
+  it("finds quizzes by id, or the newest published one for latest", () => {
     expect(findQuiz("1", quizzes)?.id).toBe("1");
+    // quiz 3 is newer but a draft, so latest stays on 2
     expect(findQuiz("latest", quizzes)?.id).toBe("2");
-    expect(findQuiz("3", quizzes)).toBeUndefined();
+    expect(findQuiz("4", quizzes)).toBeUndefined();
+  });
+
+  it("hides drafts on the live site but allows them locally", () => {
+    const live = playableQuizzes(quizzes, false);
+    const local = playableQuizzes(quizzes, true);
+    expect(live.map((q) => q.id)).toEqual(["1", "2"]);
+    expect(local.map((q) => q.id)).toEqual(["1", "2", "3"]);
+
+    expect(findQuiz("3", live)).toBeUndefined();
+    expect(handleGuess({ quizId: "3", questionId: 1, guess: "草稿" }, SECRET, live).status).toBe(404);
+
+    expect(findQuiz("3", local)?.id).toBe("3");
+    expect(findQuiz("latest", local)?.id).toBe("2");
+    const r = handleGuess({ quizId: "3", questionId: 1, guess: "草稿" }, SECRET, local);
+    expect((r.body as GuessResponse).solved).toBe(true);
   });
 
   it("validates input", () => {
-    expect(guessIn("3", 7, "加油").status).toBe(404);
+    expect(guessIn("4", 7, "加油").status).toBe(404);
     expect(guessIn("latest", 7, "你好").status).toBe(404);
     expect(handleGuess({ questionId: 7, guess: "加油" }, SECRET, quizzes).status).toBe(404);
     expect(guessIn("1", 99, "加油").status).toBe(404);
