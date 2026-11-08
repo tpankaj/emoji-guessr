@@ -235,7 +235,7 @@ function Shell({ children, onHelp, quiz, progress }: ShellProps) {
       <header class="header">
         <div class="header-side" />
         <h1>
-          Emoji <span lang="zh-CN">中文</span>
+          Emoji Guesser
         </h1>
         <div class="header-side right">
           {onHelp && (
