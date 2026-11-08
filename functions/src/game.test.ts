@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { findQuiz, handleGuess, playableQuizzes, publicQuiz, validateQuizzes, type GuessResponse } from "./game";
-import { QUIZZES } from "./quizzes";
-import type { Quiz } from "./quizzes/types";
+import {
+  checkUpdate,
+  findQuiz,
+  handleGuess,
+  playableQuizzes,
+  publicQuiz,
+  validateQuiz,
+  validateQuizzes,
+  type GuessResponse,
+} from "./game";
+import type { Quiz } from "./types";
 import { score } from "./scoring";
 import { signToken, verifyToken } from "./token";
 
@@ -42,21 +50,24 @@ describe("token", () => {
   });
 });
 
-describe("published quizzes", () => {
-  it("are all valid", () => {
-    expect(validateQuizzes(QUIZZES)).toEqual([]);
-  });
+const sampleQuiz: Quiz = {
+  id: "1",
+  published: true,
+  questions: [
+    { id: 1, emoji: "➕⛽️", answer: "加油", pinyin: "jiā yóu", meaning: "keep going", maxGuesses: 2 },
+    { id: 2, emoji: "🧪📝", answer: "测试题目", pinyin: "cè shì tí mù", meaning: "test fixture", maxGuesses: 5 },
+  ],
+};
 
-  it("never expose answers, pinyin or meanings publicly", () => {
-    for (const quiz of QUIZZES) {
-      const json = JSON.stringify(publicQuiz(quiz));
-      for (const q of quiz.questions) {
-        for (const ch of q.answer) expect(json).not.toContain(ch);
-        expect(json).not.toContain(q.pinyin);
-        expect(json).not.toContain(q.meaning);
-      }
+describe("publicQuiz", () => {
+  it("never exposes answers, pinyin or meanings", () => {
+    const json = JSON.stringify(publicQuiz(sampleQuiz));
+    for (const q of sampleQuiz.questions) {
+      for (const ch of q.answer) expect(json).not.toContain(ch);
+      expect(json).not.toContain(q.pinyin);
+      expect(json).not.toContain(q.meaning);
     }
-    expect(publicQuiz(QUIZZES[0]).questions[0]).toEqual({ id: 1, emoji: "➕⛽️", length: 2, maxGuesses: 2 });
+    expect(publicQuiz(sampleQuiz).questions[0]).toEqual({ id: 1, emoji: "➕⛽️", length: 2, maxGuesses: 2 });
   });
 });
 
@@ -77,10 +88,14 @@ describe("validateQuizzes", () => {
     expect(errors.join("\n")).toMatch(/quiz "v3": published must be true or false/);
   });
 
-  it("requires at least one published quiz", () => {
-    const q = { id: 1, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hi", maxGuesses: 3 };
-    expect(validateQuizzes([{ id: "1", published: false, questions: [q] }]).join("\n")).toMatch(/no published quiz/);
-    expect(validateQuizzes([{ id: "1", published: true, questions: [q] }])).toEqual([]);
+  it("copes with malformed data from the database", () => {
+    expect(validateQuiz(null)).toEqual(["quiz must be an object"]);
+    expect(validateQuiz({ id: "2", published: true })).toEqual(['quiz "2": has no puzzles']);
+    const errors = validateQuiz({ id: "2", published: true, questions: [null, { id: "x", answer: 5 }] }).join("\n");
+    expect(errors).toMatch(/puzzle #1: id must be a whole number/);
+    expect(errors).toMatch(/puzzle x: answer must be Chinese/);
+    expect(errors).toMatch(/missing pinyin/);
+    expect(validateQuiz(sampleQuiz)).toEqual([]);
   });
 });
 
@@ -197,5 +212,33 @@ describe("handleGuess", () => {
     // Same question id (7) in quiz 2: its token must not work in quiz 1
     const fromQuiz2 = ok(guessIn("2", 7, "大学")).token;
     expect(guess("加油", fromQuiz2).status).toBe(400);
+  });
+});
+
+describe("checkUpdate", () => {
+  const draft = { ...sampleQuiz, published: false };
+  const withQuestion = (i: number, change: Partial<Quiz["questions"][number]>): Quiz => ({
+    ...sampleQuiz,
+    questions: sampleQuiz.questions.map((q, j) => (j === i ? { ...q, ...change } : q)),
+  });
+
+  it("allows new quizzes, any change to a draft, and publishing a draft", () => {
+    expect(checkUpdate(undefined, sampleQuiz)).toEqual([]);
+    expect(checkUpdate(draft, { ...draft, questions: [sampleQuiz.questions[0]] })).toEqual([]);
+    expect(checkUpdate(draft, sampleQuiz)).toEqual([]);
+  });
+
+  it("allows fixing a published quiz's pinyin or meaning", () => {
+    expect(checkUpdate(sampleQuiz, withQuestion(0, { pinyin: "jiāyóu", meaning: "go go go" }))).toEqual([]);
+  });
+
+  it("refuses to unpublish or change a published quiz's puzzles", () => {
+    expect(checkUpdate(sampleQuiz, draft).join()).toMatch(/can't be unpublished/);
+    expect(checkUpdate(sampleQuiz, { ...sampleQuiz, questions: [sampleQuiz.questions[0]] }).join()).toMatch(
+      /can't add or remove puzzles/,
+    );
+    expect(checkUpdate(sampleQuiz, withQuestion(0, { answer: "加班" })).join()).toMatch(/can't change its answer/);
+    expect(checkUpdate(sampleQuiz, withQuestion(1, { maxGuesses: 6 })).join()).toMatch(/can't change its maxGuesses/);
+    expect(checkUpdate(sampleQuiz, withQuestion(1, { emoji: "🐍" })).join()).toMatch(/can't change its emoji/);
   });
 });

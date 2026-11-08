@@ -1,4 +1,4 @@
-// Quiz data lives ONLY on the server. Never import anything under quizzes/ from web/.
+// Quiz data lives ONLY on the server (Firestore + the function). Never import this from web/.
 
 export interface Question {
   /** Unique within its quiz. */

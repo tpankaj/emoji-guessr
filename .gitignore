@@ -21,3 +21,7 @@ npm-debug.log*
 
 # OS
 .DS_Store
+
+# Quiz working copies (the database is the source of truth) and local emulator data
+/quizzes/
+/.emulator-data/

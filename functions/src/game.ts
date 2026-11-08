@@ -1,5 +1,4 @@
-import { QUIZZES } from "./quizzes";
-import type { Quiz } from "./quizzes/types";
+import type { Quiz } from "./types";
 import { HAN_ONLY, chars, score, type Mark } from "./scoring";
 import { signToken, verifyToken, type TokenState } from "./token";
 
@@ -37,7 +36,7 @@ export function playableQuizzes(quizzes: Quiz[], includeDrafts: boolean): Quiz[]
 }
 
 /** Looks up a quiz by id, or for "latest" the newest *published* one (never a draft). */
-export function findQuiz(id: string, quizzes: Quiz[] = QUIZZES): Quiz | undefined {
+export function findQuiz(id: string, quizzes: Quiz[]): Quiz | undefined {
   if (id === "latest") return quizzes.filter((q) => q.published).at(-1);
   return quizzes.find((q) => q.id === id);
 }
@@ -55,38 +54,83 @@ export function publicQuiz(quiz: Quiz): PublicQuiz {
   };
 }
 
-/** Returns a list of problems with the quiz data (empty when it's all valid). */
-export function validateQuizzes(quizzes: Quiz[]): string[] {
+/**
+ * Problems with one quiz (empty when valid). Defensive about shape, because quizzes come
+ * from the database or a hand-written JSON file and could contain anything.
+ */
+export function validateQuiz(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return ["quiz must be an object"];
+  const quiz = raw as Record<string, unknown>;
+  const id = String(quiz.id);
   const errors: string[] = [];
-  const quizIds = new Set<string>();
-  for (const quiz of quizzes) {
-    if (!/^[1-9][0-9]*$/.test(quiz.id)) errors.push(`quiz "${quiz.id}": id must be a number like "1"`);
-    if (quizIds.has(quiz.id)) errors.push(`quiz "${quiz.id}": duplicate id`);
-    quizIds.add(quiz.id);
-    if (quiz.questions.length === 0) errors.push(`quiz "${quiz.id}": has no puzzles`);
-    if (typeof quiz.published !== "boolean") errors.push(`quiz "${quiz.id}": published must be true or false`);
+  if (typeof quiz.id !== "string" || !/^[1-9][0-9]*$/.test(quiz.id)) {
+    errors.push(`quiz "${id}": id must be a number like "1"`);
+  }
+  if (typeof quiz.published !== "boolean") errors.push(`quiz "${id}": published must be true or false`);
+  if (!Array.isArray(quiz.questions) || quiz.questions.length === 0) {
+    errors.push(`quiz "${id}": has no puzzles`);
+    return errors;
+  }
 
-    const questionIds = new Set<number>();
-    for (const q of quiz.questions) {
-      const where = `quiz "${quiz.id}" puzzle ${q.id}`;
-      if (questionIds.has(q.id)) errors.push(`${where}: duplicate puzzle id`);
-      questionIds.add(q.id);
-      if (!HAN_ONLY.test(q.answer)) errors.push(`${where}: answer must be Chinese characters only`);
-      if (!Number.isInteger(q.maxGuesses) || q.maxGuesses < 1) errors.push(`${where}: maxGuesses must be ≥ 1`);
-      if (!q.emoji.trim() || !q.pinyin.trim() || !q.meaning.trim()) {
-        errors.push(`${where}: missing emoji, pinyin or meaning`);
+  const questionIds = new Set<number>();
+  quiz.questions.forEach((raw: unknown, i: number) => {
+    const q = (raw ?? {}) as Record<string, unknown>;
+    const where = `quiz "${id}" puzzle ${q.id ?? `#${i + 1}`}`;
+    if (!Number.isInteger(q.id)) errors.push(`${where}: id must be a whole number`);
+    else if (questionIds.has(q.id as number)) errors.push(`${where}: duplicate puzzle id`);
+    else questionIds.add(q.id as number);
+    if (typeof q.answer !== "string" || !HAN_ONLY.test(q.answer)) {
+      errors.push(`${where}: answer must be Chinese characters only`);
+    }
+    if (!Number.isInteger(q.maxGuesses) || (q.maxGuesses as number) < 1) {
+      errors.push(`${where}: maxGuesses must be ≥ 1`);
+    }
+    for (const field of ["emoji", "pinyin", "meaning"]) {
+      if (typeof q[field] !== "string" || !(q[field] as string).trim()) errors.push(`${where}: missing ${field}`);
+    }
+  });
+  return errors;
+}
+
+/** Problems across several quizzes: each quiz's own, plus duplicate ids. */
+export function validateQuizzes(quizzes: unknown[]): string[] {
+  const errors = quizzes.flatMap(validateQuiz);
+  const seen = new Set<string>();
+  for (const q of quizzes as Partial<Quiz>[]) {
+    if (seen.has(String(q?.id))) errors.push(`quiz "${q?.id}": duplicate id`);
+    seen.add(String(q?.id));
+  }
+  return errors;
+}
+
+/**
+ * Why replacing `existing` with `next` isn't allowed (empty when it is). Drafts can change
+ * freely. Once published, a quiz can't be unpublished, and its puzzles (count, order, ids,
+ * emoji, answers, guess limits) are frozen: shared links and saved progress depend on them.
+ * Fixing a pinyin or meaning is fine.
+ */
+export function checkUpdate(existing: Quiz | undefined, next: Quiz): string[] {
+  if (!existing?.published) return [];
+  const errors: string[] = [];
+  if (!next.published) errors.push(`quiz "${next.id}" is published and can't be unpublished`);
+  if (existing.questions.length !== next.questions.length) {
+    errors.push(`quiz "${next.id}" is published: can't add or remove puzzles`);
+    return errors;
+  }
+  existing.questions.forEach((old, i) => {
+    const q = next.questions[i];
+    for (const field of ["id", "emoji", "answer", "maxGuesses"] as const) {
+      if (old[field] !== q[field]) {
+        errors.push(`quiz "${next.id}" puzzle ${old.id} is published: can't change its ${field}`);
       }
     }
-  }
-  if (quizzes.length > 0 && !quizzes.some((q) => q.published)) {
-    errors.push(`no published quiz: "/" would have nothing to play`);
-  }
+  });
   return errors;
 }
 
 const fail = (status: number, error: string): Result => ({ status, body: { error } });
 
-export function handleGuess(input: unknown, secret: string, quizzes: Quiz[] = QUIZZES): Result {
+export function handleGuess(input: unknown, secret: string, quizzes: Quiz[]): Result {
   const { quizId, questionId, guess, token } = (input ?? {}) as Record<string, unknown>;
 
   // "latest" is only for loading; guesses must name the exact quiz being played.

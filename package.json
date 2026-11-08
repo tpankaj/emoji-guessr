@@ -5,9 +5,10 @@
     "install:all": "npm --prefix functions install && npm --prefix web install",
     "test": "npm --prefix functions test",
     "build": "npm --prefix functions run build && npm --prefix web run build",
-    "emulators": "npm run build && firebase emulators:start --only functions,hosting --project demo-emoji-guessr",
+    "emulators": "npm run build && PATH=\"$(brew --prefix openjdk 2>/dev/null)/bin:$PATH\" firebase emulators:start --only functions,hosting,firestore --project demo-emoji-guessr $([ -d .emulator-data ] && echo --import .emulator-data) --export-on-exit .emulator-data",
     "dev": "npm --prefix web run dev",
-    "deploy": "npm test && npm run build && npm run check:leaks && firebase deploy --only functions,hosting",
-    "check:leaks": "node scripts/check-leaks.mjs"
+    "deploy": "npm test && npm run build && npm run check:leaks && firebase deploy --only functions,hosting,firestore:rules",
+    "check:leaks": "node scripts/check-leaks.mjs",
+    "quiz": "npm --prefix functions run build --silent && node scripts/quiz.mjs"
   }
 }

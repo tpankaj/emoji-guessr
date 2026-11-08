@@ -1,15 +1,19 @@
-// Fails if any answer, pinyin or meaning from any quiz appears in the built site.
+// Fails if any answer, pinyin or meaning from your local quiz files appears in the built site.
 // Warns (doesn't fail) if single answer characters appear, since UI text may use common ones.
-import { readFileSync, readdirSync, statSync } from "node:fs";
+//
+// Quizzes live in Firestore; this reads the working copies in quizzes/*.json (git-ignored).
+// Run `npm run quiz -- download all` to refresh them. With none present it warns and passes.
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// Every quiz file under functions/src/quizzes/ (each holds one published quiz).
-const quizDir = "functions/src/quizzes";
-const quizSrc = readdirSync(quizDir)
-  .filter((f) => /^\d+\.ts$/.test(f))
-  .map((f) => readFileSync(join(quizDir, f), "utf8"))
-  .join("\n");
-const grab = (field) => [...quizSrc.matchAll(new RegExp(`${field}:\\s*"([^"]+)"`, "g"))].map((m) => m[1]);
+const quizDir = "quizzes";
+const quizFiles = existsSync(quizDir) ? readdirSync(quizDir).filter((f) => f.endsWith(".json")) : [];
+if (!quizFiles.length) {
+  console.warn("check-leaks: no quiz files in quizzes/ — skipped (run `npm run quiz -- download all`)");
+  process.exit(0);
+}
+const questions = quizFiles.flatMap((f) => JSON.parse(readFileSync(join(quizDir, f), "utf8")).questions ?? []);
+const grab = (field) => questions.map((q) => q[field]).filter((v) => typeof v === "string" && v);
 const answers = grab("answer");
 const secrets = [...answers, ...grab("pinyin"), ...grab("meaning")];
 
