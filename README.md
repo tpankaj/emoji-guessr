@@ -1,7 +1,9 @@
 # Emoji Guesser
 
 A Wordle-style guessing game: each puzzle is a Chinese phrase written in emoji (➕⛽️ → 加油).
-Each puzzle sets its own guess limit, see 🟩🟨⬜ feedback per character, and share a spoiler-free result string at the end.
+Players get a set number of guesses per puzzle, see 🟩🟨⬜ feedback per character, and share a spoiler-free result string at the end.
+
+Quizzes are permanent: `/` plays the newest quiz, and `/q/<id>` (the link in every shared result) always plays that exact quiz. Older quizzes are reachable only through their links.
 
 ## How it's built
 
@@ -11,13 +13,17 @@ functions/   One Cloud Function, `api`, that holds the answers and checks guesse
 scripts/     check-leaks.mjs: fails the deploy if an answer ends up in the built site
 ```
 
-- **Answers never reach the browser.** `functions/src/quiz.ts` is the only place they live. The site gets the emoji and answer length from `GET /api/quiz`. Guesses go to `POST /api/guess`, which returns the colours, and returns the answer only once the puzzle is solved or out of guesses.
-- **No database.** The server signs a small token holding the guess count (HMAC with `TOKEN_SECRET`). The browser stores it with progress in `localStorage`. A forged or swapped token is rejected.
+- **Answers never reach the browser.** `functions/src/quizzes/` is the only place they live. The site gets each puzzle's emoji, answer length and guess limit from `GET /api/quiz/<id>` (or `/api/quiz/latest`). Guesses go to `POST /api/guess`, which returns the colours, and returns the answer only once the puzzle is solved or out of guesses.
+- **No database.** The server signs a small token holding the guess count (HMAC with `TOKEN_SECRET`). The browser stores it with progress in `localStorage`, separately for each quiz. A forged token, or one from a different quiz or puzzle, is rejected.
 - Firebase Hosting rewrites `/api/**` to the function, so everything runs on one domain.
 
-## Adding puzzles
+## Publishing a new quiz
 
-Edit `functions/src/quiz.ts` and append to `questions` with a new unique `id`. Answers must be Chinese characters only. Every puzzle needs a `maxGuesses` (its guess limit; there is no default). If you change puzzles after people have started playing, bump the quiz `id` (e.g. `"v2"`) so old saved progress resets.
+1. Copy `functions/src/quizzes/1.ts` to the next number (e.g. `2.ts`) and set `id: "2"`.
+2. Fill in its puzzles. Each needs a unique `id`, an `answer` in Chinese characters only, `pinyin`, `meaning`, and a `maxGuesses` (there is no default).
+3. Import it in `functions/src/quizzes/index.ts` and add it to the **end** of `QUIZZES`. The last entry is what `/` plays.
+
+**Never remove a published quiz or change its answers or puzzles** — shared `/q/<id>` links must keep working, and players' saved progress refers to them. Fixing a typo in a pinyin or meaning is fine. `npm test` checks the quiz data (unique ids, Chinese-only answers, guess limits) and runs before every deploy.
 
 ## Local development
 

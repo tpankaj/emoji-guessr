@@ -1,24 +1,28 @@
 import type { Mark, Progress, PublicQuiz } from "./types";
 
+export const GAME_TITLE = "Emoji Guesser";
+
 const SQUARE: Record<Mark, string> = { correct: "🟩", present: "🟨", absent: "⬜" };
 
 export function solvedCount(quiz: PublicQuiz, progress: Progress): number {
   return quiz.questions.filter((q) => progress.questions[q.id]?.solved).length;
 }
 
+/** The permanent link to a quiz, used in the share text and the address bar. */
+export const quizPath = (quizId: string) => `/q/${quizId}`;
+
 /**
  * One line per puzzle: its number, then each guess as a block of squares.
  * Includes neither the emoji clues nor the guessed characters, so it gives nothing away.
  */
-export function buildShareText(quiz: PublicQuiz, progress: Progress, url: string): string {
+export function buildShareText(quiz: PublicQuiz, progress: Progress, origin: string): string {
   const lines = quiz.questions.map((q, i) => {
     const state = progress.questions[q.id];
     const rows = (state?.guesses ?? []).map((g) => g.marks.map((m) => SQUARE[m]).join(""));
     return `${i + 1}. ${rows.join(" ")}${state?.solved ? "" : " ❌"}`;
   });
-  return [`${quiz.title}  ${solvedCount(quiz, progress)}/${quiz.questions.length}`, ...lines, url].join(
-    "\n",
-  );
+  const heading = `${GAME_TITLE} #${quiz.id}  ${solvedCount(quiz, progress)}/${quiz.questions.length}`;
+  return [heading, ...lines, origin + quizPath(quiz.id)].join("\n");
 }
 
 export type ShareOutcome = "shared" | "copied" | "cancelled" | "failed";

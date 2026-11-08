@@ -1,13 +1,14 @@
 import type { Progress, QuestionState } from "./types";
 
-const PROGRESS_KEY = "emoji-guesser:progress";
+// Progress is saved per quiz, so playing one never wipes another.
+const PROGRESS_PREFIX = "emoji-guesser:progress:";
 const HELP_KEY = "emoji-guesser:help-seen";
 
 export const emptyQuestion = (): QuestionState => ({ guesses: [], done: false, solved: false });
 
 export function loadProgress(quizId: string): Progress {
   try {
-    const saved = JSON.parse(localStorage.getItem(PROGRESS_KEY) ?? "null");
+    const saved = JSON.parse(localStorage.getItem(PROGRESS_PREFIX + quizId) ?? "null");
     if (saved?.quizId === quizId && typeof saved.current === "number" && saved.questions) {
       return saved;
     }
@@ -19,7 +20,7 @@ export function loadProgress(quizId: string): Progress {
 
 export function saveProgress(p: Progress) {
   try {
-    localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+    localStorage.setItem(PROGRESS_PREFIX + p.quizId, JSON.stringify(p));
   } catch {
     // ignore: game still works, it just won't resume after refresh
   }
@@ -27,7 +28,9 @@ export function saveProgress(p: Progress) {
 
 export function clearProgress() {
   try {
-    localStorage.removeItem(PROGRESS_KEY);
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(PROGRESS_PREFIX))
+      .forEach((k) => localStorage.removeItem(k));
   } catch {
     // ignore
   }

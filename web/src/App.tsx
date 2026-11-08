@@ -1,19 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { getQuiz, postGuess } from "./api";
+import { ApiError, getQuiz, postGuess } from "./api";
 import { Board, flipDuration } from "./components/Board";
 import { HelpModal } from "./components/HelpModal";
 import { RevealCard } from "./components/RevealCard";
 import { Summary } from "./components/Summary";
 import { TriedChars } from "./components/TriedChars";
+import { quizPath } from "./share";
 import { clearProgress, emptyQuestion, helpSeen, loadProgress, markHelpSeen, saveProgress } from "./storage";
 import type { Progress, PublicQuiz } from "./types";
 
 const isHan = (ch: string) => /^\p{Script=Han}$/u.test(ch);
 
+/** "/" plays the newest quiz; "/q/<id>" plays that quiz forever. Anything else isn't a quiz. */
+function quizIdFromPath(path: string): string | null {
+  if (path === "/") return "latest";
+  return /^\/q\/([1-9][0-9]*)\/?$/.exec(path)?.[1] ?? null;
+}
+
 export function App() {
   const [quiz, setQuiz] = useState<PublicQuiz | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [typed, setTyped] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
@@ -31,13 +39,21 @@ export function App() {
 
   const load = useCallback(() => {
     setLoadError(null);
-    getQuiz()
+    const id = quizIdFromPath(location.pathname);
+    if (!id) {
+      setNotFound(true);
+      return;
+    }
+    getQuiz(id)
       .then((q) => {
+        // Pin the address to this exact quiz, so a refresh or copied URL keeps
+        // playing it even after a newer quiz is published.
+        if (location.pathname !== quizPath(q.id)) history.replaceState(null, "", quizPath(q.id));
         setQuiz(q);
         setProgress(loadProgress(q.id));
         if (!helpSeen()) setShowHelp(true);
       })
-      .catch((e: Error) => setLoadError(e.message));
+      .catch((e: Error) => (e instanceof ApiError && e.status === 404 ? setNotFound(true) : setLoadError(e.message)));
   }, []);
 
   useEffect(() => {
@@ -74,6 +90,18 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, quiz?.id]);
 
+  if (notFound) {
+    return (
+      <Shell>
+        <div class="center">
+          <p>This quiz doesn’t exist.</p>
+          <a class="btn primary" href="/">
+            Play the latest quiz
+          </a>
+        </div>
+      </Shell>
+    );
+  }
   if (loadError) {
     return (
       <Shell>
@@ -114,7 +142,7 @@ export function App() {
 
     setPending(true);
     try {
-      const r = await postGuess(question.id, raw, qs.token);
+      const r = await postGuess(quiz.id, question.id, raw, qs.token);
       const id = question.id;
       update((p) => {
         const prev = p.questions[id] ?? emptyQuestion();

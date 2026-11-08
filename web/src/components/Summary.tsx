@@ -10,7 +10,7 @@ interface Props {
 export function Summary({ quiz, progress, notify }: Props) {
   const solved = solvedCount(quiz, progress);
   const total = quiz.questions.length;
-  const text = buildShareText(quiz, progress, `${location.origin}/`);
+  const text = buildShareText(quiz, progress, location.origin);
 
   async function onShare() {
     const outcome = await shareText(text);

@@ -2,7 +2,7 @@
   "name": "emoji-guesser-functions",
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf lib && tsc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

@@ -1,9 +1,14 @@
-// Fails if any answer, pinyin or meaning from functions/src/quiz.ts appears in the built site.
+// Fails if any answer, pinyin or meaning from any quiz appears in the built site.
 // Warns (doesn't fail) if single answer characters appear, since UI text may use common ones.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const quizSrc = readFileSync("functions/src/quiz.ts", "utf8");
+// Every quiz file under functions/src/quizzes/ (each holds one published quiz).
+const quizDir = "functions/src/quizzes";
+const quizSrc = readdirSync(quizDir)
+  .filter((f) => /^\d+\.ts$/.test(f))
+  .map((f) => readFileSync(join(quizDir, f), "utf8"))
+  .join("\n");
 const grab = (field) => [...quizSrc.matchAll(new RegExp(`${field}:\\s*"([^"]+)"`, "g"))].map((m) => m[1]);
 const answers = grab("answer");
 const secrets = [...answers, ...grab("pinyin"), ...grab("meaning")];

@@ -24,10 +24,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export const getQuiz = () => request<PublicQuiz>("/quiz");
+/** Loads a quiz by id, or the newest one with "latest". */
+export const getQuiz = (id: string) => request<PublicQuiz>(`/quiz/${encodeURIComponent(id)}`);
 
-export const postGuess = (questionId: number, guess: string, token?: string) =>
+export const postGuess = (quizId: string, questionId: number, guess: string, token?: string) =>
   request<GuessResponse>("/guess", {
     method: "POST",
-    body: JSON.stringify({ questionId, guess, token }),
+    body: JSON.stringify({ quizId, questionId, guess, token }),
   });

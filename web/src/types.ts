@@ -12,7 +12,6 @@ export interface PublicQuestion {
 
 export interface PublicQuiz {
   id: string;
-  title: string;
   questions: PublicQuestion[];
 }
 

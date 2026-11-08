@@ -275,6 +275,8 @@ body {
   cursor: pointer;
   background: var(--surface);
   color: var(--text);
+  display: inline-block;
+  text-decoration: none; /* for links styled as buttons */
 }
 .btn.primary {
   background: var(--accent);

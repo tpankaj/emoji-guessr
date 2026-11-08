@@ -1,10 +1,10 @@
-import { QUIZ, type Quiz } from "./quiz";
+import { QUIZZES } from "./quizzes";
+import type { Quiz } from "./quizzes/types";
 import { HAN_ONLY, chars, score, type Mark } from "./scoring";
 import { signToken, verifyToken, type TokenState } from "./token";
 
 export interface PublicQuiz {
   id: string;
-  title: string;
   questions: { id: number; emoji: string; length: number; maxGuesses: number }[];
 }
 
@@ -28,10 +28,15 @@ export interface Result {
   body: GuessResponse | { error: string };
 }
 
-export function publicQuiz(quiz: Quiz = QUIZ): PublicQuiz {
+/** Looks up a quiz by id, or the newest one for "latest". */
+export function findQuiz(id: string, quizzes: Quiz[] = QUIZZES): Quiz | undefined {
+  return id === "latest" ? quizzes.at(-1) : quizzes.find((q) => q.id === id);
+}
+
+/** What the browser is allowed to see: no answers, pinyin or meanings. */
+export function publicQuiz(quiz: Quiz): PublicQuiz {
   return {
     id: quiz.id,
-    title: quiz.title,
     questions: quiz.questions.map((q) => ({
       id: q.id,
       emoji: q.emoji,
@@ -41,10 +46,39 @@ export function publicQuiz(quiz: Quiz = QUIZ): PublicQuiz {
   };
 }
 
+/** Returns a list of problems with the quiz data (empty when it's all valid). */
+export function validateQuizzes(quizzes: Quiz[]): string[] {
+  const errors: string[] = [];
+  const quizIds = new Set<string>();
+  for (const quiz of quizzes) {
+    if (!/^[1-9][0-9]*$/.test(quiz.id)) errors.push(`quiz "${quiz.id}": id must be a number like "1"`);
+    if (quizIds.has(quiz.id)) errors.push(`quiz "${quiz.id}": duplicate id`);
+    quizIds.add(quiz.id);
+    if (quiz.questions.length === 0) errors.push(`quiz "${quiz.id}": has no puzzles`);
+
+    const questionIds = new Set<number>();
+    for (const q of quiz.questions) {
+      const where = `quiz "${quiz.id}" puzzle ${q.id}`;
+      if (questionIds.has(q.id)) errors.push(`${where}: duplicate puzzle id`);
+      questionIds.add(q.id);
+      if (!HAN_ONLY.test(q.answer)) errors.push(`${where}: answer must be Chinese characters only`);
+      if (!Number.isInteger(q.maxGuesses) || q.maxGuesses < 1) errors.push(`${where}: maxGuesses must be ≥ 1`);
+      if (!q.emoji.trim() || !q.pinyin.trim() || !q.meaning.trim()) {
+        errors.push(`${where}: missing emoji, pinyin or meaning`);
+      }
+    }
+  }
+  return errors;
+}
+
 const fail = (status: number, error: string): Result => ({ status, body: { error } });
 
-export function handleGuess(input: unknown, secret: string, quiz: Quiz = QUIZ): Result {
-  const { questionId, guess, token } = (input ?? {}) as Record<string, unknown>;
+export function handleGuess(input: unknown, secret: string, quizzes: Quiz[] = QUIZZES): Result {
+  const { quizId, questionId, guess, token } = (input ?? {}) as Record<string, unknown>;
+
+  // "latest" is only for loading; guesses must name the exact quiz being played.
+  const quiz = typeof quizId === "string" && quizId !== "latest" ? findQuiz(quizId, quizzes) : undefined;
+  if (!quiz) return fail(404, "Unknown quiz");
 
   const question = quiz.questions.find((q) => q.id === questionId);
   if (!question) return fail(404, "Unknown question");
