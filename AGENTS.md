@@ -72,7 +72,7 @@ npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--
 - Emulators: hosting `:5050`, functions `:5001`, firestore `:8080`. Always run under the **demo project** `demo-emoji-guessr` (pinned in the npm script) so local testing can never touch live resources; `web/vite.config.ts` proxies to `/demo-emoji-guessr/us-central1/api`.
 - The Firestore emulator needs Java; the npm script puts `$(brew --prefix openjdk)/bin` on PATH.
 - Needs `functions/.secret.local` with `TOKEN_SECRET=<random>` (git-ignored).
-- The local database starts empty: `npm run quiz -- upload quizzes/*.json --emulator`. To wipe it: `curl -X DELETE "http://127.0.0.1:8080/emulator/v1/projects/demo-emoji-guessr/databases/(default)/documents"`.
+- The local database starts empty: `npm run quiz -- upload quizzes/*.json --emulator`. Data is saved to `.emulator-data/` only when the emulators shut down cleanly (Ctrl+C); killing the process skips the save, and the next start comes up empty. To wipe it: `curl -X DELETE "http://127.0.0.1:8080/emulator/v1/projects/demo-emoji-guessr/databases/(default)/documents"`.
 - The site can load before the function emulator is ready and show "Couldn't load the quiz"; wait for "All emulators ready" and retry.
 - Cloudflare analytics never loads on localhost.
 
