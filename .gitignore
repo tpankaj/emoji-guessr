@@ -5,14 +5,14 @@ functions/lib/
 coverage/
 *.tsbuildinfo
 
-# Secrets and local-only config
+# Secrets and local-only config (.claude/ holds Claude app settings, never shared)
 *.local
 .env
 .env.*
 .runtimeconfig.json
 *-firebase-adminsdk-*.json
 service-account*.json
-.claude/settings.local.json
+.claude/
 
 # Firebase emulator / CLI state and logs
 .firebase/

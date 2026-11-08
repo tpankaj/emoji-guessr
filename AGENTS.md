@@ -63,6 +63,7 @@ npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--
 
 ## Local development details
 
+- To run the app: start `npm run emulators` in the background, wait for "All emulators ready" in its output, then open <http://localhost:5050> in the browser. Don't commit tool-specific launch configs (e.g. `.claude/` is git-ignored).
 - Emulators: hosting `:5050`, functions `:5001`, firestore `:8080`. Always run under the **demo project** `demo-emoji-guessr` (pinned in the npm script) so local testing can never touch live resources; `web/vite.config.ts` proxies to `/demo-emoji-guessr/us-central1/api`.
 - The Firestore emulator needs Java; the npm script puts `$(brew --prefix openjdk)/bin` on PATH.
 - Needs `functions/.secret.local` with `TOKEN_SECRET=<random>` (git-ignored).
