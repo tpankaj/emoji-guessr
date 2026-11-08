@@ -51,6 +51,8 @@ Without `--emulator`, the same command uploads to the live site. Quizzes with `"
 
 ## Deploying
 
+Pushing to `main` deploys automatically through GitHub Actions. To deploy from your own machine instead:
+
 ```bash
 npm run deploy
 ```

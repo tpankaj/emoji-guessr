@@ -1,0 +1,73 @@
+# Tests every push and pull request; deploys to Firebase on pushes to main.
+#
+# Deploying signs in to Google Cloud without any stored key (Workload Identity Federation):
+# Google trusts GitHub's short-lived token for this repo's main branch only. The repo
+# variables GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_DEPLOY_SERVICE_ACCOUNT say which.
+# Quizzes aren't deployed here — they live in Firestore and are managed with npm run quiz.
+
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            web/package-lock.json
+      - run: npm ci --prefix functions
+      - run: npm ci --prefix web
+      - run: npm test
+      - run: npm run build
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+    # One deploy at a time; a newer push waits for the running deploy instead of cancelling it.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # lets the job get GitHub's sign-in token for Google Cloud
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            web/package-lock.json
+      - run: npm ci --prefix functions
+      - run: npm ci --prefix web
+      - run: npm install --global firebase-tools@15.34.1
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Build
+        run: npm run build
+
+      # No leak check here: it needs the quiz files, which aren't in the repo. The commit
+      # hooks and `npm run deploy` on your own machine still run it.
+
+      - name: Deploy
+        run: firebase deploy --only functions,hosting,firestore:rules --force --non-interactive

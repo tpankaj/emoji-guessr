@@ -86,6 +86,16 @@ Both read the local `quizzes/` files and skip with a warning if there are none.
 - `ALLOWED_PHRASES` in `quiz-secrets.mjs` lists UI phrases that contain an answer but are fine (下次加油！, 加油！).
 - Git history was rewritten once to remove a draft puzzle that had been committed; don't reintroduce answers.
 
+## Auto deploy (GitHub Actions)
+
+`.github/workflows/deploy.yml`: every push and pull request runs `npm ci`, `npm test` and `npm run build`. Pushes to `main` (and manual runs) then deploy functions, hosting and Firestore rules with `firebase deploy --force --non-interactive`, one deploy at a time. Quizzes aren't deployed; they're managed with `npm run quiz`.
+
+- **No stored keys.** GitHub signs in through Workload Identity Federation: pool `github`, provider `github-oidc`, which only accepts tokens where `repository == 'tpankaj/emoji-guessr'` and `ref == 'refs/heads/main'`. Repo variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SERVICE_ACCOUNT` point the workflow at them.
+- **Deploy account** `github-deployer@emoji-guessr-e99da.iam.gserviceaccount.com` has: Cloud Functions Developer, Firebase Hosting Admin, Firebase Rules Admin, Firebase Viewer, Service Usage Consumer, Secret Manager Viewer, Artifact Registry Reader, and Service Account User on the function's runtime account (`846603703445-compute@developer.gserviceaccount.com`) only. It has no database access.
+- **No leak check in CI** (the quiz files aren't in the repo). The commit hooks and a local `npm run deploy` still run it.
+- `firebase-tools` is pinned in the workflow; bump it alongside the local CLI.
+- Deploying from your machine with `npm run deploy` still works.
+
 ## First-time setup (already done for the live project)
 
 1. Firebase project on the **Blaze** plan, with a budget alert in Google Cloud Billing.
