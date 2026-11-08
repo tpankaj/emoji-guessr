@@ -1,0 +1,13 @@
+{
+  "name": "emoji-guesser",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix functions install && npm --prefix web install",
+    "test": "npm --prefix functions test",
+    "build": "npm --prefix functions run build && npm --prefix web run build",
+    "emulators": "npm run build && firebase emulators:start --only functions,hosting",
+    "dev": "npm --prefix web run dev",
+    "deploy": "npm test && npm run build && npm run check:leaks && firebase deploy --only functions,hosting",
+    "check:leaks": "node scripts/check-leaks.mjs"
+  }
+}

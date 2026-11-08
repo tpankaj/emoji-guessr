@@ -1,0 +1,33 @@
+import type { GuessResponse, PublicQuiz } from "./types";
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    throw new ApiError("Network error — check your connection", 0);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(data?.error ?? `Request failed (${res.status})`, res.status);
+  return data as T;
+}
+
+export const getQuiz = () => request<PublicQuiz>("/quiz");
+
+export const postGuess = (questionId: number, guess: string, token?: string) =>
+  request<GuessResponse>("/guess", {
+    method: "POST",
+    body: JSON.stringify({ questionId, guess, token }),
+  });
