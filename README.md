@@ -1,6 +1,6 @@
 # Emoji Guesser
 
-A Wordle-style guessing game: each puzzle is a Chinese phrase written in emoji (➕⛽️ → 加油).
+A guessing game where each puzzle is a Chinese phrase written in emoji (➕⛽️ → 加油).
 Players get a set number of guesses per puzzle, see 🟩🟨⬜ feedback per character, and share a spoiler-free result string at the end.
 
 Quizzes are permanent: `/` plays the newest quiz, and `/q/<id>` (the link in every shared result) always plays that exact quiz. Older quizzes are reachable only through their links.

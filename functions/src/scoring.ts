@@ -8,7 +8,7 @@ export function chars(s: string): string[] {
 }
 
 /**
- * Wordle-style scoring. Exact matches are marked first; remaining answer
+ * Per-character scoring. Exact matches are marked first; remaining answer
  * characters are then consumed left-to-right for "present" marks, so a
  * character is never marked more times than it appears in the answer.
  */
