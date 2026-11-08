@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { findQuiz, handleGuess, publicQuiz, validateQuizzes } from "./game";
+import * as logger from "firebase-functions/logger";
+import { findQuiz, handleGuess, publicQuiz, validateQuizzes, type GuessResponse } from "./game";
 import { QUIZZES } from "./quizzes";
 
 // Set in production with: firebase functions:secrets:set TOKEN_SECRET
@@ -11,6 +12,13 @@ const TOKEN_SECRET = defineSecret("TOKEN_SECRET");
 const problems = validateQuizzes(QUIZZES);
 if (problems.length) throw new Error(`Invalid quiz data:\n${problems.join("\n")}`);
 
+/**
+ * Structured log lines: each lands in Cloud Logging with `jsonPayload.event` set,
+ * so they can be filtered and counted (see README → "Logs and stats").
+ * Never log tokens or anything identifying a player.
+ */
+const clip = (v: unknown, max = 40) => (typeof v === "string" ? v.slice(0, max) : v);
+
 export const api = onRequest(
   { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 5, memory: "256MiB" },
   (req, res) => {
@@ -20,24 +28,53 @@ export const api = onRequest(
     // would show the wrong lengths or guess limits.
     res.set("Cache-Control", "no-store");
 
-    // GET /quiz/<id> or /quiz/latest
-    const quizMatch = /^\/quiz\/([^/]+)$/.exec(path);
-    if (req.method === "GET" && quizMatch) {
-      const quiz = findQuiz(decodeURIComponent(quizMatch[1]));
-      if (!quiz) {
-        res.status(404).json({ error: "Quiz not found" });
+    try {
+      // GET /quiz/<id> or /quiz/latest
+      const quizMatch = /^\/quiz\/([^/]+)$/.exec(path);
+      if (req.method === "GET" && quizMatch) {
+        const requested = decodeURIComponent(quizMatch[1]);
+        const quiz = findQuiz(requested);
+        logger.info("quiz_load", { event: "quiz_load", requested: clip(requested), quizId: quiz?.id ?? null });
+        if (!quiz) {
+          res.status(404).json({ error: "Quiz not found" });
+          return;
+        }
+        res.json(publicQuiz(quiz));
         return;
       }
-      res.json(publicQuiz(quiz));
-      return;
-    }
 
-    if (req.method === "POST" && path === "/guess") {
-      const result = handleGuess(req.body, TOKEN_SECRET.value());
-      res.status(result.status).json(result.body);
-      return;
-    }
+      if (req.method === "POST" && path === "/guess") {
+        const { quizId, questionId, guess } = (req.body ?? {}) as Record<string, unknown>;
+        const result = handleGuess(req.body, TOKEN_SECRET.value());
+        if (result.status === 200) {
+          const r = result.body as GuessResponse;
+          logger.info("guess", {
+            event: "guess",
+            quizId,
+            questionId,
+            guess: clip(guess),
+            guessNumber: r.guessesUsed,
+            solved: r.solved,
+            done: r.done,
+          });
+        } else {
+          logger.warn("guess_rejected", {
+            event: "guess_rejected",
+            status: result.status,
+            reason: (result.body as { error: string }).error,
+            quizId: clip(quizId),
+            questionId: clip(questionId),
+          });
+        }
+        res.status(result.status).json(result.body);
+        return;
+      }
 
-    res.status(404).json({ error: "Not found" });
+      logger.info("not_found", { event: "not_found", method: req.method, path: clip(path, 100) });
+      res.status(404).json({ error: "Not found" });
+    } catch (err) {
+      logger.error("error", { event: "error", method: req.method, path: clip(path, 100), err });
+      res.status(500).json({ error: "Something went wrong" });
+    }
   },
 );

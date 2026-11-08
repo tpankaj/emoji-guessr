@@ -56,3 +56,20 @@ Add `?reset` to the URL to clear your saved progress. This only works on `localh
 5. `npm run deploy` (runs tests, builds, checks for answer leaks, deploys hosting + function).
 
 The site will be at `https://<project-id>.web.app`.
+
+## Logs and stats
+
+The function writes one structured log line per request. View them in the Firebase console → **Functions** → **Logs**, or for filtering and counting, in [Google Cloud Logs Explorer](https://console.cloud.google.com/logs/query) with these queries:
+
+| What | Query |
+|---|---|
+| All game events | `resource.labels.service_name="api" AND jsonPayload.event:*` |
+| Quizzes opened | `jsonPayload.event="quiz_load"` |
+| Every guess | `jsonPayload.event="guess"` |
+| Puzzles solved | `jsonPayload.event="guess" AND jsonPayload.solved=true` |
+| Puzzles failed | `jsonPayload.event="guess" AND jsonPayload.done=true AND jsonPayload.solved=false` |
+| One puzzle | `jsonPayload.event="guess" AND jsonPayload.quizId="1" AND jsonPayload.questionId=3` |
+| Possible tampering | `jsonPayload.event="guess_rejected" AND jsonPayload.reason="Invalid progress token"` |
+| Server errors | `jsonPayload.event="error"` |
+
+Guess events include the guessed text (handy for spotting common wrong answers) but never tokens or anything that identifies a player. Logs are kept for 30 days by default, and this volume stays inside Cloud Logging's free allowance.
