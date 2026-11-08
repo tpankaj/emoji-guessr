@@ -41,8 +41,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // ?reset clears saved progress (handy while testing)
-    if (new URLSearchParams(location.search).has("reset")) {
+    // ?reset clears saved progress — a testing aid, so only on local hosts
+    const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+    if (isLocal && new URLSearchParams(location.search).has("reset")) {
       clearProgress();
       history.replaceState(null, "", location.pathname);
     }

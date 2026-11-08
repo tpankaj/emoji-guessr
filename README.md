@@ -35,7 +35,7 @@ echo "TOKEN_SECRET=$(openssl rand -hex 32)" > functions/.secret.local
 
 For hot reload on the frontend, run `npm run emulators` in one terminal and `npm run dev` in another (Vite at :5173 proxies `/api` to the functions emulator).
 
-Add `?reset` to the URL to clear your saved progress.
+Add `?reset` to the URL to clear your saved progress. This only works on `localhost` / `127.0.0.1`; on the live site, use a private window instead.
 
 ## Deploying (first time)
 
