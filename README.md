@@ -57,6 +57,16 @@ Add `?reset` to the URL to clear your saved progress. This only works on `localh
 
 The site will be at `https://<project-id>.web.app`.
 
+## Visitor analytics (Cloudflare)
+
+The site can report cookie-free visitor counts to Cloudflare Web Analytics (free; no consent banner needed). It's off until you add a token:
+
+1. Sign up at <https://dash.cloudflare.com> → **Analytics & Logs** → **Web Analytics** → **Add a site**, and enter your domain.
+2. Choose the **JavaScript snippet** option (the automatic option only works if Cloudflare runs your DNS), and copy the `token` value from the snippet.
+3. Paste it into `CLOUDFLARE_ANALYTICS_TOKEN` in `web/src/analytics.ts`, commit, and `npm run deploy`.
+
+It never loads on `localhost`, so local testing isn't counted. Visits are recorded per quiz (`/q/1`, `/q/2`, …).
+
 ## Logs and stats
 
 The function writes one structured log line per request. View them in the Firebase console → **Functions** → **Logs**, or for filtering and counting, in [Google Cloud Logs Explorer](https://console.cloud.google.com/logs/query) with these queries:

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { loadAnalytics } from "./analytics";
 import { ApiError, getQuiz, postGuess } from "./api";
 import { Board, flipDuration } from "./components/Board";
 import { HelpModal } from "./components/HelpModal";
@@ -42,6 +43,7 @@ export function App() {
     const id = quizIdFromPath(location.pathname);
     if (!id) {
       setNotFound(true);
+      loadAnalytics();
       return;
     }
     getQuiz(id)
@@ -49,11 +51,19 @@ export function App() {
         // Pin the address to this exact quiz, so a refresh or copied URL keeps
         // playing it even after a newer quiz is published.
         if (location.pathname !== quizPath(q.id)) history.replaceState(null, "", quizPath(q.id));
+        loadAnalytics();
         setQuiz(q);
         setProgress(loadProgress(q.id));
         if (!helpSeen()) setShowHelp(true);
       })
-      .catch((e: Error) => (e instanceof ApiError && e.status === 404 ? setNotFound(true) : setLoadError(e.message)));
+      .catch((e: Error) => {
+        if (e instanceof ApiError && e.status === 404) {
+          setNotFound(true);
+          loadAnalytics();
+        } else {
+          setLoadError(e.message);
+        }
+      });
   }, []);
 
   useEffect(() => {
