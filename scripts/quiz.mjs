@@ -7,6 +7,7 @@
 //
 // Add --emulator to work on the local emulator instead of the live project.
 // Live uploads ask for confirmation unless you add --yes.
+// --force overrides the publish rules (e.g. changing a published quiz during beta testing).
 //
 // Uses the same validation and publish rules as the server (functions/lib/game.js), so a
 // quiz the script accepts is one the game will serve. Live access uses Google Application
@@ -93,11 +94,17 @@ async function upload(files) {
     const doc = await collection.doc(quiz.id).get();
     const existing = doc.exists ? fromDoc(doc) : undefined;
     const refused = checkUpdate(existing, quiz);
-    if (refused.length) fail(`${file} can't be uploaded:\n  ${refused.join("\n  ")}`);
+    if (refused.length && !flags.has("--force")) {
+      fail(`${file} can't be uploaded:\n  ${refused.join("\n  ")}\n(--force overrides this, e.g. before launch)`);
+    }
+    if (refused.length) {
+      console.warn(`⚠ --force: overriding publish rules for ${file}:\n  ${refused.join("\n  ")}`);
+    }
 
     let action;
     if (!existing) action = quiz.published ? "add and PUBLISH" : "add as draft";
     else if (normalize(existing) === normalize(quiz)) action = null;
+    else if (refused.length) action = "FORCE-CHANGE published quiz";
     else if (!existing.published && quiz.published) action = "PUBLISH (was a draft)";
     else action = existing.published ? "fix pinyin/meaning of published quiz" : "update draft";
 
@@ -149,7 +156,7 @@ try {
   else if (command === "delete") await remove(rest[0]);
   else if (command === "upload") await upload(rest);
   else if (command === "download") await download(rest[0]);
-  else fail("usage: npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--emulator] [--yes]");
+  else fail("usage: npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--emulator] [--yes] [--force]");
 } catch (e) {
   if (!useEmulator && /credential|Could not load the default credentials|PERMISSION_DENIED|UNAUTHENTICATED/i.test(String(e))) {
     fail(`couldn't access ${target}: ${e.message}\nSign in first — see README → "Managing quizzes".`);

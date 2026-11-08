@@ -52,7 +52,7 @@ Add `--emulator` to any of these to work on the local emulator instead of the li
 3. Upload the draft to live (`npm run quiz -- upload quizzes/2.json`) if you like — it stays invisible there.
 4. When it's ready, set `"published": true` and upload again. No deploy needed; it appears within 5 minutes.
 
-**The script enforces the rules:** a published quiz can't be unpublished or deleted, and its puzzles (count, order, ids, emoji, answers, guess limits) can't change — shared `/q/<id>` links and players' saved progress depend on them. Fixing a pinyin or meaning is allowed. Drafts can change freely or be deleted.
+**The script enforces the rules:** a published quiz can't be unpublished or deleted, and its puzzles (count, order, ids, emoji, answers, guess limits) can't change — shared `/q/<id>` links and players' saved progress depend on them. Fixing a pinyin or meaning is allowed. Drafts can change freely or be deleted. If you really need to change a published quiz (say, before launch, when nobody has its links yet), add `--force`: it still checks the quiz is valid, but overrides these rules and prints what it's overriding.
 
 **Signing in for live uploads** (one time). The script uses your Google account through Google's standard sign-in:
 
