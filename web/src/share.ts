@@ -7,14 +7,14 @@ export function solvedCount(quiz: PublicQuiz, progress: Progress): number {
 }
 
 /**
- * One line per question: the emoji clue, then each guess as a block of squares.
- * Never includes the guessed characters, so it's spoiler-free.
+ * One line per puzzle: its number, then each guess as a block of squares.
+ * Includes neither the emoji clues nor the guessed characters, so it gives nothing away.
  */
 export function buildShareText(quiz: PublicQuiz, progress: Progress, url: string): string {
-  const lines = quiz.questions.map((q) => {
+  const lines = quiz.questions.map((q, i) => {
     const state = progress.questions[q.id];
     const rows = (state?.guesses ?? []).map((g) => g.marks.map((m) => SQUARE[m]).join(""));
-    return `${q.emoji}  ${rows.join(" ")}${state?.solved ? "" : " ❌"}`;
+    return `${i + 1}. ${rows.join(" ")}${state?.solved ? "" : " ❌"}`;
   });
   return [`${quiz.title}  ${solvedCount(quiz, progress)}/${quiz.questions.length}`, ...lines, url].join(
     "\n",
