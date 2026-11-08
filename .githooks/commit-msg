@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks commit messages that mention a draft puzzle (see scripts/check-commit-leaks.mjs).
+exec node scripts/check-commit-leaks.mjs --message "$1"

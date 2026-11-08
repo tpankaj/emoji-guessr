@@ -9,6 +9,7 @@
     "dev": "npm --prefix web run dev",
     "deploy": "npm test && npm run build && npm run check:leaks && firebase deploy --only functions,hosting,firestore:rules",
     "check:leaks": "node scripts/check-leaks.mjs",
-    "quiz": "npm --prefix functions run build --silent && node scripts/quiz.mjs"
+    "quiz": "npm --prefix functions run build --silent && node scripts/quiz.mjs",
+    "setup:hooks": "git config core.hooksPath .githooks"
   }
 }

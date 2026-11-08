@@ -10,7 +10,7 @@ Quizzes are permanent: `/` plays the newest quiz, and `/q/<id>` (the link in eve
 ```
 web/         Vite + Preact + TypeScript static site (Firebase Hosting)
 functions/   One Cloud Function, `api`, that reads quizzes from Firestore and checks guesses
-scripts/     quiz.mjs: upload/download/list quizzes · check-leaks.mjs: answer leak check
+scripts/     quiz.mjs: manage quizzes · check-leaks.mjs + check-commit-leaks.mjs: leak checks
 quizzes/     your local quiz files (git-ignored — answers never go in the repo)
 ```
 
@@ -67,6 +67,7 @@ Use the Google account that owns the Firebase project.
 
 ```bash
 npm run install:all     # first time only
+npm run setup:hooks     # first time only: turn on the git leak-check hooks
 npm test                # game, validation, publish-rule and store tests
 npm run emulators       # builds everything, serves at http://localhost:5050 (always the offline
                         # demo project, so local testing never touches the live one)
@@ -90,7 +91,14 @@ For hot reload on the frontend, run `npm run emulators` in one terminal and `npm
 
 Add `?reset` to the URL to clear your saved progress. This only works on `localhost` / `127.0.0.1`; on the live site, use a private window instead.
 
-The leak check (`npm run check:leaks`, part of `npm run deploy`) looks for your quizzes' answers in the built site, using the files in `quizzes/`. With no files there it's skipped; `npm run quiz -- download all` refreshes them.
+### Leak checks
+
+Two checks keep answers from leaking. Both read your local `quizzes/` files (with none there they're skipped; `npm run quiz -- download all` refreshes them):
+
+- **Website** (`npm run check:leaks`, part of `npm run deploy`): fails if any quiz's answer, pinyin or meaning is in the built site, since players mustn't see an answer before solving it.
+- **Git commits** (hooks in `.githooks/`): block a commit whose changes or message contain a **draft** puzzle's answer, pinyin, meaning or emoji clue. Published puzzles are already public, so they're allowed. Turn the hooks on once per clone with `npm run setup:hooks`; `git commit --no-verify` skips them in an emergency.
+
+Phrases that contain an answer but are fine (like 下次加油！) are listed in `ALLOWED_PHRASES` in `scripts/quiz-secrets.mjs`.
 
 ## Deploying (first time)
 

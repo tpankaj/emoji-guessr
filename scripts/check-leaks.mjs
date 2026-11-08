@@ -1,21 +1,18 @@
 // Fails if any answer, pinyin or meaning from your local quiz files appears in the built site.
 // Warns (doesn't fail) if single answer characters appear, since UI text may use common ones.
 //
-// Quizzes live in Firestore; this reads the working copies in quizzes/*.json (git-ignored).
-// Run `npm run quiz -- download all` to refresh them. With none present it warns and passes.
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+// Reads the working copies in quizzes/*.json (see quiz-secrets.mjs). With none present it
+// warns and passes.
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { loadQuizzes, stripAllowed, websiteSecrets } from "./quiz-secrets.mjs";
 
-const quizDir = "quizzes";
-const quizFiles = existsSync(quizDir) ? readdirSync(quizDir).filter((f) => f.endsWith(".json")) : [];
-if (!quizFiles.length) {
+const quizzes = loadQuizzes();
+if (!quizzes.length) {
   console.warn("check-leaks: no quiz files in quizzes/ — skipped (run `npm run quiz -- download all`)");
   process.exit(0);
 }
-const questions = quizFiles.flatMap((f) => JSON.parse(readFileSync(join(quizDir, f), "utf8")).questions ?? []);
-const grab = (field) => questions.map((q) => q[field]).filter((v) => typeof v === "string" && v);
-const answers = grab("answer");
-const secrets = [...answers, ...grab("pinyin"), ...grab("meaning")];
+const { phrases: secrets, answers } = websiteSecrets(quizzes);
 
 const files = [];
 const walk = (dir) => {
@@ -25,11 +22,6 @@ const walk = (dir) => {
   }
 };
 walk("web/dist");
-// UI phrases that contain an answer but are fine to ship (e.g. encouragement shown after a
-// puzzle ends). They're removed before searching, so the answer elsewhere still counts as a leak.
-// Longest first, so a phrase isn't partly removed by a shorter one it contains.
-const ALLOWED_PHRASES = ["下次加油！", "加油！"].sort((a, b) => b.length - a.length);
-const stripAllowed = (text) => ALLOWED_PHRASES.reduce((t, p) => t.split(p).join(""), text);
 const bundle = files.map((f) => [f, stripAllowed(readFileSync(f, "utf8"))]);
 
 let failed = false;
