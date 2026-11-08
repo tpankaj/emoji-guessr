@@ -1,6 +1,6 @@
 import type { Mark, Progress, PublicQuiz } from "./types";
 
-export const GAME_TITLE = "Emoji Guesser";
+export const GAME_TITLE = "Emoji Guessr";
 
 const SQUARE: Record<Mark, string> = { correct: "🟩", present: "🟨", absent: "⬜" };
 

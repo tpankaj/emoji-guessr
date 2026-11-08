@@ -1,5 +1,5 @@
 {
-  "name": "emoji-guesser",
+  "name": "emoji-guessr",
   "private": true,
   "scripts": {
     "install:all": "npm --prefix functions install && npm --prefix web install",

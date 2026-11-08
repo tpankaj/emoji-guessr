@@ -1,4 +1,4 @@
-# Emoji Guesser
+# Emoji Guessr
 
 A guessing game where each puzzle is a Chinese phrase written in emoji (➕⛽️ → 加油).
 Players get a set number of guesses per puzzle, see 🟩🟨⬜ feedback per character, and share a spoiler-free result string at the end.
@@ -47,7 +47,7 @@ Add `?reset` to the URL to clear your saved progress. This only works on `localh
 
 1. Create a Firebase project at <https://console.firebase.google.com> and upgrade it to the **Blaze** plan (required for Cloud Functions; this traffic level stays inside the free allowance). Set a budget alert in Google Cloud Billing.
 2. `firebase login`
-3. `firebase use --add` → pick the project (replaces the `demo-emoji-guesser` placeholder in `.firebaserc`).
+3. `firebase use --add` → pick the project (replaces the `demo-emoji-guessr` placeholder in `.firebaserc`).
 4. Set the production token secret:
    ```bash
    openssl rand -hex 32 | firebase functions:secrets:set TOKEN_SECRET --data-file=-

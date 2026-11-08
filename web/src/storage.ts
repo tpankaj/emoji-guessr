@@ -1,8 +1,8 @@
 import type { Progress, QuestionState } from "./types";
 
 // Progress is saved per quiz, so playing one never wipes another.
-const PROGRESS_PREFIX = "emoji-guesser:progress:";
-const HELP_KEY = "emoji-guesser:help-seen";
+const PROGRESS_PREFIX = "emoji-guessr:progress:";
+const HELP_KEY = "emoji-guessr:help-seen";
 
 export const emptyQuestion = (): QuestionState => ({ guesses: [], done: false, solved: false });
 

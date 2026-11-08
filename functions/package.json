@@ -1,5 +1,5 @@
 {
-  "name": "emoji-guesser-functions",
+  "name": "emoji-guessr-functions",
   "main": "lib/index.js",
   "scripts": {
     "build": "rm -rf lib && tsc",

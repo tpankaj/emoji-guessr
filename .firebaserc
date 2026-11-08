@@ -1,5 +1,5 @@
 {
   "projects": {
-    "default": "demo-emoji-guesser"
+    "default": "demo-emoji-guessr"
   }
 }
