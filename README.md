@@ -30,7 +30,8 @@ scripts/     check-leaks.mjs: fails the deploy if an answer ends up in the built
 ```bash
 npm run install:all     # first time only
 npm test                # scoring + token tests
-npm run emulators       # builds everything, serves at http://localhost:5050
+npm run emulators       # builds everything, serves at http://localhost:5050 (always the offline
+                        # demo project, so local testing never touches the live one)
 ```
 
 The emulator needs `functions/.secret.local` containing `TOKEN_SECRET=<random string>`. It's gitignored; create one with:

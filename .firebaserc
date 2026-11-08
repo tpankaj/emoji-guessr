@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "demo-emoji-guessr"
-  }
+    "default": "emoji-guessr-e99da"
+  },
+  "targets": {},
+  "etags": {}
 }
