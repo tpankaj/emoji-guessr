@@ -1,6 +1,7 @@
 // Manage quizzes in Firestore.
 //
 //   npm run quiz -- list                          list quizzes in the database
+//   npm run quiz -- new-id                        print an unused random id for an unlisted quiz
 //   npm run quiz -- upload quizzes/2.json [...]   check and upload quiz files
 //   npm run quiz -- download <id|all>             save quizzes to quizzes/<id>.json
 //   npm run quiz -- delete <id>                   delete a draft (published quizzes are permanent)
@@ -13,6 +14,7 @@
 // quiz the script accepts is one the game will serve. Live access uses Google Application
 // Default Credentials (see README → "Managing quizzes").
 
+import { randomInt } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -21,7 +23,7 @@ import { createInterface } from "node:readline/promises";
 const requireFromFunctions = createRequire(new URL("../functions/package.json", import.meta.url));
 const { initializeApp } = requireFromFunctions("firebase-admin/app");
 const { getFirestore } = requireFromFunctions("firebase-admin/firestore");
-const { validateQuiz, checkUpdate } = requireFromFunctions("./lib/game.js");
+const { validateQuiz, checkUpdate, UNLISTED_ID } = requireFromFunctions("./lib/game.js");
 const { QUIZ_COLLECTION } = requireFromFunctions("./lib/store.js");
 
 const EMULATOR_PROJECT = "demo-emoji-guessr";
@@ -56,7 +58,9 @@ const target = useEmulator ? `local emulator (${project})` : `LIVE project ${pro
 
 /** The quiz as stored: Firestore holds everything but the id, which is the document id. */
 const fromDoc = (doc) => ({ id: doc.id, ...doc.data() });
-const normalize = (q) => JSON.stringify({ id: q.id, published: q.published, questions: q.questions });
+const normalize = (q) => JSON.stringify({ id: q.id, published: q.published, listed: q.listed, questions: q.questions });
+const urlPath = (q) => `/q/${q.id}`;
+const UNLISTED_NOTE = "unlisted: not on the main site, reachable only by its link";
 
 async function confirm(question) {
   if (useEmulator || flags.has("--yes")) return true;
@@ -73,8 +77,10 @@ async function list() {
   if (!quizzes.length) console.log("  (none)");
   for (const q of quizzes) {
     const problems = validateQuiz(q);
-    const status = q.published ? "published" : "draft";
-    console.log(`  ${q.id}  ${status.padEnd(9)}  ${q.questions?.length ?? 0} puzzles${problems.length ? "  ⚠ invalid" : ""}`);
+    const status = !q.published ? "draft" : q.listed ? "listed" : "unlisted";
+    console.log(
+      `  ${q.id.padEnd(10)}  ${status.padEnd(8)}  ${String(q.questions?.length ?? 0).padStart(2)} puzzles  ${urlPath(q)}${problems.length ? "  ⚠ invalid" : ""}`,
+    );
   }
 }
 
@@ -102,11 +108,15 @@ async function upload(files) {
     }
 
     let action;
-    if (!existing) action = quiz.published ? "add and PUBLISH" : "add as draft";
+    const hidden = quiz.published && !quiz.listed ? ` (${UNLISTED_NOTE})` : "";
+    const sameContent = existing && JSON.stringify(existing.questions) === JSON.stringify(quiz.questions);
+    if (!existing) action = quiz.published ? `add and PUBLISH${hidden}` : "add as draft";
     else if (normalize(existing) === normalize(quiz)) action = null;
     else if (refused.length) action = "FORCE-CHANGE published quiz";
-    else if (!existing.published && quiz.published) action = "PUBLISH (was a draft)";
-    else action = existing.published ? "fix pinyin/meaning of published quiz" : "update draft";
+    else if (!existing.published && quiz.published) action = `PUBLISH (was a draft)${hidden}`;
+    else if (existing.published && sameContent && existing.listed !== quiz.listed) {
+      action = quiz.listed ? "SHOW on the main site (list it)" : `HIDE from the main site (${UNLISTED_NOTE}; its /q/${quiz.id} link keeps working)`;
+    } else action = existing.published ? "fix pinyin/meaning of published quiz" : "update draft";
 
     if (action) plan.push({ file, quiz, action });
     else console.log(`= quiz ${quiz.id} (${file}): no changes`);
@@ -119,11 +129,26 @@ async function upload(files) {
 
   for (const { quiz } of plan) {
     const { id, ...data } = quiz;
-    await collection.doc(id).set({ published: data.published, questions: data.questions });
+    await collection.doc(id).set({ published: data.published, listed: data.listed, questions: data.questions });
     console.log(`✔ quiz ${id} uploaded`);
   }
   if (!useEmulator && plan.some((p) => p.quiz.published)) {
     console.log("Published quizzes can take up to 5 minutes to appear on the live site.");
+  }
+}
+
+/** Prints a random id for an unlisted quiz: the id is the secret part of its link. */
+async function newId() {
+  const taken = new Set((await collection.get()).docs.map((d) => d.id));
+  // No lookalike characters (0/o, 1/l/i); at least one letter so it can't be mistaken for a number.
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  for (;;) {
+    const id = Array.from({ length: 10 }, () => alphabet[randomInt(alphabet.length)]).join("");
+    if (UNLISTED_ID.test(id) && !taken.has(id)) {
+      console.log(id);
+      console.log(`Set "id": "${id}" and "listed": false in the quiz file. Its link will be ${urlPath({ id })}`);
+      return;
+    }
   }
 }
 
@@ -136,7 +161,7 @@ async function download(which) {
   for (const doc of docs) {
     const quiz = fromDoc(doc);
     const path = join(QUIZ_DIR, `${quiz.id}.json`);
-    writeFileSync(path, JSON.stringify({ id: quiz.id, published: quiz.published, questions: quiz.questions }, null, 2) + "\n");
+    writeFileSync(path, JSON.stringify({ id: quiz.id, published: quiz.published, listed: quiz.listed, questions: quiz.questions }, null, 2) + "\n");
     console.log(`✔ quiz ${quiz.id} → ${path}`);
   }
 }
@@ -153,10 +178,11 @@ async function remove(id) {
 
 try {
   if (command === "list") await list();
+  else if (command === "new-id") await newId();
   else if (command === "delete") await remove(rest[0]);
   else if (command === "upload") await upload(rest);
   else if (command === "download") await download(rest[0]);
-  else fail("usage: npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--emulator] [--yes] [--force]");
+  else fail("usage: npm run quiz -- <list | new-id | upload <files…> | download <id|all> | delete <id>> [--emulator] [--yes] [--force]");
 } catch (e) {
   if (!useEmulator && /credential|Could not load the default credentials|PERMISSION_DENIED|UNAUTHENTICATED/i.test(String(e))) {
     fail(`couldn't access ${target}: ${e.message}\nSign in first — see README → "Managing quizzes".`);
