@@ -1,4 +1,4 @@
-import type { Progress, QuestionState } from "./types";
+import type { Progress, QuestionState, QuizIndex } from "./types";
 
 // Progress is saved per quiz, so playing one never wipes another.
 const PROGRESS_PREFIX = "emoji-guessr:progress:";
@@ -100,4 +100,18 @@ export function archiveStatus(quizId: string, count: number): ArchiveStatus {
   if (played >= count) return { kind: "done", solved: states.filter((s) => s.solved).length };
   if (played > 0 || states.some((s) => s.guesses.length > 0)) return { kind: "playing", played };
   return { kind: "new" };
+}
+
+/**
+ * Where "/" should start: the oldest released quiz this player hasn't finished, or the
+ * latest one when they've finished them all. Drafts and unlisted quizzes (emulator only)
+ * never count. Null when there is nothing to play.
+ */
+export function firstUnfinishedId(index: QuizIndex): string | null {
+  const released = index.quizzes.filter((q) => !q.draft && !q.unlisted);
+  // The index is newest first, so walk it from the oldest end.
+  for (let i = released.length - 1; i >= 0; i--) {
+    if (archiveStatus(released[i].id, released[i].count).kind !== "done") return released[i].id;
+  }
+  return released[0]?.id ?? null;
 }
