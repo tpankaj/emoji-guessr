@@ -119,6 +119,30 @@ body {
   font-weight: 700;
 }
 
+.link-btn {
+  font: inherit;
+  font-weight: 700;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-btn:hover {
+  color: var(--text);
+}
+.link-btn:focus-visible {
+  outline: 3px solid var(--present);
+  outline-offset: 2px;
+}
+.modal.confirm .actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 .progress {
   display: flex;
   justify-content: center;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { loadAnalytics } from "./analytics";
 import { ApiError, getQuiz, postGuess } from "./api";
+import { ConfirmModal } from "./components/ConfirmModal";
 import { Board, flipDuration } from "./components/Board";
 import { Archive } from "./components/Archive";
 import { HelpModal } from "./components/HelpModal";
@@ -8,8 +9,8 @@ import { RevealCard } from "./components/RevealCard";
 import { ARCHIVE_PATH, Shell } from "./components/Shell";
 import { Summary } from "./components/Summary";
 import { TriedChars } from "./components/TriedChars";
-import { quizPath } from "./share";
-import { clearProgress, emptyQuestion, helpSeen, loadProgress, markHelpSeen, saveProgress } from "./storage";
+import { isUnlistedId, quizPath } from "./share";
+import { clearProgress, emptyQuestion, helpSeen, loadProgress, markHelpSeen, resetProgress, saveProgress } from "./storage";
 import type { Progress, PublicQuiz } from "./types";
 
 const isHan = (ch: string) => /^\p{Script=Han}$/u.test(ch);
@@ -36,6 +37,7 @@ function QuizPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [typed, setTyped] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
   const [shake, setShake] = useState(0);
@@ -99,6 +101,11 @@ function QuizPage() {
   const closeHelp = useCallback(() => {
     markHelpSeen();
     setShowHelp(false);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
+  const cancelReset = useCallback(() => {
+    setConfirmReset(false);
     setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
@@ -198,11 +205,24 @@ function QuizPage() {
     }
   }
 
+  const hasGuesses = Object.values(progress.questions).some((s) => s.guesses.length > 0);
+  const doReset = () => {
+    resetProgress(quiz.id, quiz.previousIds);
+    setProgress({ quizId: quiz.id, revision: quiz.revision, current: 0, questions: {} });
+    setConfirmReset(false);
+    notify("Progress reset");
+  };
+
   const next = () => update((p) => ({ ...p, current: p.current + 1 }));
   const revealDelay = animateRow !== null ? flipDuration(question.length) : 0;
 
   return (
-    <Shell onHelp={() => setShowHelp(true)} quiz={quiz} progress={progress}>
+    <Shell
+      onHelp={() => setShowHelp(true)}
+      quiz={quiz}
+      progress={progress}
+      onReset={hasGuesses ? () => setConfirmReset(true) : undefined}
+    >
       {finished ? (
         <Summary quiz={quiz} progress={progress} notify={notify} />
       ) : (
@@ -268,6 +288,15 @@ function QuizPage() {
       )}
 
       {showHelp && <HelpModal onClose={closeHelp} />}
+      {confirmReset && (
+        <ConfirmModal
+          title={`Start ${isUnlistedId(quiz.id) ? "this quiz" : `quiz #${quiz.id}`} over?`}
+          message="Your guesses and results for this quiz will be erased."
+          confirmLabel="Start over"
+          onConfirm={doReset}
+          onCancel={cancelReset}
+        />
+      )}
       {toast && (
         <div class="toast" key={toast.id} role="status">
           {toast.msg}
