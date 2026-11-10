@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { archiveStatus, clearProgress, loadProgress, saveProgress } from "./storage";
+import { archiveStatus, clearProgress, loadProgress, resetProgress, saveProgress } from "./storage";
 import type { Progress } from "./types";
 
 // A minimal localStorage, since the tests run outside a browser. Like the real one, saved
@@ -157,5 +157,28 @@ describe("archiveStatus and clearProgress", () => {
     expect(store.getItem(KEY("5"))).toBeNull();
     expect(store.getItem(KEY("a1b2c3d4e5"))).toBeNull();
     expect(store.getItem("emoji-guessr:help-seen")).toBe("1");
+  });
+});
+
+describe("resetProgress", () => {
+  const OLD = "a1b2c3d4e5";
+
+  it("removes only the given quiz, plus its old ids", () => {
+    stash(played("5", 1));
+    stash(played(OLD, 1));
+    stash(played("6", 1));
+    store.setItem("emoji-guessr:help-seen", "1");
+    resetProgress("5", [OLD]);
+    expect(store.getItem(KEY("5"))).toBeNull();
+    expect(store.getItem(KEY(OLD))).toBeNull();
+    expect(store.getItem(KEY("6"))).not.toBeNull();
+    expect(store.getItem("emoji-guessr:help-seen")).toBe("1");
+  });
+
+  it("leaves the quiz not started and loading fresh", () => {
+    stash(played("5", 1));
+    resetProgress("5");
+    expect(archiveStatus("5", 2)).toEqual({ kind: "new" });
+    expect(loadProgress("5", 1).current).toBe(0);
   });
 });

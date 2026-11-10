@@ -53,6 +53,15 @@ export function saveProgress(p: Progress) {
   }
 }
 
+/** Forget one quiz's saved progress, including any under its old ids (so it can't move back). */
+export function resetProgress(quizId: string, previousIds: string[] = []) {
+  try {
+    for (const id of [quizId, ...previousIds]) localStorage.removeItem(PROGRESS_PREFIX + id);
+  } catch {
+    // ignore
+  }
+}
+
 export function clearProgress() {
   try {
     Object.keys(localStorage)
