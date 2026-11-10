@@ -8,11 +8,13 @@ interface Props {
   onHelp?: () => void;
   quiz?: PublicQuiz;
   progress?: Progress;
+  /** Shows "Start over" in the quiz bar. */
+  onReset?: () => void;
   /** Hides the archive button, on the archive page itself. */
   onArchive?: boolean;
 }
 
-export function Shell({ children, onHelp, quiz, progress, onArchive }: Props) {
+export function Shell({ children, onHelp, quiz, progress, onReset, onArchive }: Props) {
   return (
     <div class="app">
       <header class="header">
@@ -42,6 +44,11 @@ export function Shell({ children, onHelp, quiz, progress, onArchive }: Props) {
             <span class="muted">{isUnlistedId(quiz.id) ? "Unlisted quiz" : `Quiz #${quiz.id}`}</span>
             {quiz.latest && Number(quiz.latest) > Number(quiz.id) && (
               <a href={quizPath(quiz.latest)}>Newer quiz: #{quiz.latest} →</a>
+            )}
+            {onReset && (
+              <button class="link-btn" onClick={onReset}>
+                Start over
+              </button>
             )}
           </div>
           <nav class="progress" aria-label="Puzzle progress">
