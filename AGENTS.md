@@ -8,6 +8,7 @@ Live at <https://emojiguessr.io> (also `https://emoji-guessr-e99da.web.app`). Fi
 
 - **American spelling** everywhere: code, UI text, docs and commit messages ("color", "gray").
 - **Commit only when asked**, and **split unrelated changes into separate commits** — never one big dump. If a file mixes changes, stage partial versions.
+- **Do housekeeping without asking:** tick or update a PR's test-plan items and description once the work is verified or changes, and clean up temporary files, secrets and background processes (emulators) you started.
 - **Deploy only when asked.** `npm run deploy -- --force` (non-interactive) is how deploys have been run.
 - **Commit messages and code must never contain a draft or unlisted puzzle** (answer, pinyin, meaning or emoji clue), or an unlisted quiz's random id — the repo is public. The commit hooks check this; don't bypass them.
 - **Commit messages must not mention copyright, IP, or other games.**
