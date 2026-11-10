@@ -12,10 +12,13 @@ import type { Progress, PublicQuiz } from "./types";
 
 const isHan = (ch: string) => /^\p{Script=Han}$/u.test(ch);
 
-/** "/" plays the newest quiz; "/q/<id>" plays that quiz forever. Anything else isn't a quiz. */
+/**
+ * "/" plays the newest listed quiz; "/q/<id>" plays that quiz forever. The id is a number or
+ * a 10-character unlisted id (see isUnlistedId). Anything else isn't a quiz.
+ */
 function quizIdFromPath(path: string): string | null {
   if (path === "/") return "latest";
-  return /^\/q\/([1-9][0-9]*)\/?$/.exec(path)?.[1] ?? null;
+  return /^\/q\/([1-9][0-9]*|(?=[a-z0-9]*[a-z])[a-z0-9]{10})\/?$/.exec(path)?.[1] ?? null;
 }
 
 export function App() {
