@@ -2,14 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // index.ts builds the store and secret on import, so those are replaced with fakes.
 // `all` stands in for the Firestore load: tests assert whether a request reaches it.
-const { all, info, warn, error } = vi.hoisted(() => ({ all: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+const { snapshot, info, warn, error } = vi.hoisted(() => ({
+  snapshot: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
 
 vi.mock("firebase-functions/v2/https", () => ({ onRequest: (_opts: unknown, handler: unknown) => handler }));
 vi.mock("firebase-functions/params", () => ({ defineSecret: () => ({ value: () => "test-secret" }) }));
 vi.mock("firebase-functions/logger", () => ({ info, warn, error }));
 vi.mock("./store", () => ({
   QuizStore: class {
-    all = all;
+    snapshot = snapshot;
   },
   firestoreFetcher: () => async () => [],
 }));
@@ -19,13 +24,15 @@ import { api } from "./index";
 type Handler = (req: unknown, res: unknown) => Promise<void>;
 const handler = api as unknown as Handler;
 
+const puzzle = { id: 1, emoji: "🧪", answer: "测试", pinyin: "cè shì", meaning: "test", maxGuesses: 2 };
 const quizzes = [
-  {
-    id: "1",
-    published: true,
-    questions: [{ id: 1, emoji: "🧪", answer: "测试", pinyin: "cè shì", meaning: "test", maxGuesses: 2 }],
-  },
+  { id: "1", published: true, listed: true, revision: 1, questions: [puzzle] },
+  { id: "2", published: true, listed: true, revision: 3, questions: [puzzle] },
+  { id: "k3m9x2qv7t", published: true, listed: false, revision: 1, questions: [{ ...puzzle, answer: "隐藏" }] },
+  { id: "d4f5g6h7j8", published: false, listed: false, revision: 1, questions: [puzzle] },
 ];
+// "a1b2c3d4e5" was released as quiz 2.
+const aliases = new Map([["a1b2c3d4e5", "2"]]);
 
 async function call(method: string, path: string, body?: unknown) {
   const out: { status: number; body: any; headers: Record<string, string> } = { status: 200, body: undefined, headers: {} };
@@ -42,7 +49,7 @@ const guess = (over: Record<string, unknown> = {}) => ({ quizId: "1", questionId
 
 beforeEach(() => {
   vi.clearAllMocks();
-  all.mockResolvedValue(quizzes);
+  snapshot.mockResolvedValue({ quizzes, aliases });
 });
 
 describe("requests rejected before quizzes load", () => {
@@ -61,7 +68,7 @@ describe("requests rejected before quizzes load", () => {
       expect(r.status, `${method} ${path}`).toBe(404);
       expect(r.body).toEqual({ error: "Not found" });
     }
-    expect(all).not.toHaveBeenCalled();
+    expect(snapshot).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledWith("not_found", expect.objectContaining({ event: "not_found" }));
   });
 
@@ -71,7 +78,7 @@ describe("requests rejected before quizzes load", () => {
       expect(r.status, path).toBe(404);
       expect(r.body).toEqual({ error: "Quiz not found" });
     }
-    expect(all).not.toHaveBeenCalled();
+    expect(snapshot).not.toHaveBeenCalled();
   });
 
   it("answers a malformed guess with 400 and logs it", async () => {
@@ -91,7 +98,7 @@ describe("requests rejected before quizzes load", () => {
       expect(r.status, message).toBe(400);
       expect(r.body).toEqual({ error: message });
     }
-    expect(all).not.toHaveBeenCalled();
+    expect(snapshot).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(bad.length);
   });
 
@@ -120,8 +127,38 @@ describe("requests that do load quizzes", () => {
     expect(r.status).toBe(200);
     expect(r.body.id).toBe("1");
     expect(r.body.questions[0]).not.toHaveProperty("answer");
-    expect((await call("GET", "/quiz/latest")).body.id).toBe("1");
-    expect(all).toHaveBeenCalledTimes(3);
+    expect((await call("GET", "/quiz/latest")).body.id).toBe("2");
+    expect(snapshot).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps unlisted quizzes and drafts out of the archive list but plays unlisted ones by link", async () => {
+    const list = (await call("GET", "/quizzes")).body;
+    expect(list.quizzes.map((q: { id: string }) => q.id)).toEqual(["2", "1"]);
+    expect(JSON.stringify(list)).not.toContain("k3m9x2qv7t");
+    const hidden = await call("GET", "/quiz/k3m9x2qv7t");
+    expect(hidden.status).toBe(200);
+    expect(hidden.body).toMatchObject({ id: "k3m9x2qv7t", revision: 1, previousIds: [], latest: "2" });
+    // live, drafts are not playable
+    expect((await call("GET", "/quiz/d4f5g6h7j8")).status).toBe(404);
+    expect((await call("POST", "/guess", guess({ quizId: "d4f5g6h7j8" }))).status).toBe(404);
+  });
+
+  it("serves a released quiz under its old random id, and says what that id was", async () => {
+    const viaAlias = await call("GET", "/quiz/a1b2c3d4e5");
+    expect(viaAlias.status).toBe(200);
+    expect(viaAlias.body).toMatchObject({ id: "2", revision: 3, previousIds: ["a1b2c3d4e5"] });
+    expect((await call("GET", "/quiz/2")).body).toEqual(viaAlias.body);
+    // aliases never appear in the list
+    expect(JSON.stringify((await call("GET", "/quizzes")).body)).not.toContain("a1b2c3d4e5");
+  });
+
+  it("accepts guesses and tokens made under the old random id", async () => {
+    const firstOld = await call("POST", "/guess", guess({ quizId: "a1b2c3d4e5", guess: "你好" }));
+    expect(firstOld.status).toBe(200);
+    // the response is for the real quiz: its token is bound to "2"
+    const second = await call("POST", "/guess", guess({ quizId: "2", guess: "测试", token: firstOld.body.token }));
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ solved: true, guessesUsed: 2 });
   });
 
   it("answers an unknown but well-formed quiz id with 404", async () => {
@@ -168,7 +205,7 @@ describe("requests that do load quizzes", () => {
   });
 
   it("returns 500 when loading quizzes fails", async () => {
-    all.mockRejectedValue(new Error("firestore down"));
+    snapshot.mockRejectedValue(new Error("firestore down"));
     const r = await call("GET", "/quizzes");
     expect(r.status).toBe(500);
     expect(r.body).toEqual({ error: "Something went wrong" });

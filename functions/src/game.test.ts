@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  affectsPlay,
   checkUpdate,
   findQuiz,
+  generateUnlistedId,
   handleGuess,
   latestId,
+  nextNumber,
+  nextRevision,
+  planPromotion,
   playableQuizzes,
+  previousIdsOf,
   publicQuiz,
   quizIndex,
+  validateAlias,
   validateQuiz,
   validateQuizzes,
   type GuessResponse,
@@ -70,6 +77,7 @@ const sampleQuiz: Quiz = {
   id: "1",
   published: true,
   listed: true,
+  revision: 1,
   questions: [
     { id: 1, emoji: "➕⛽️", answer: "加油", pinyin: "jiā yóu", meaning: "keep going", maxGuesses: 2 },
     { id: 2, emoji: "🧪📝", answer: "测试题目", pinyin: "cè shì tí mù", meaning: "test fixture", maxGuesses: 5 },
@@ -87,6 +95,14 @@ describe("publicQuiz", () => {
     expect(publicQuiz(sampleQuiz, "1").questions[0]).toEqual({ id: 1, emoji: "➕⛽️", length: 2, maxGuesses: 2 });
   });
 
+  it("includes the revision and the quiz's old ids", () => {
+    expect(publicQuiz({ ...sampleQuiz, revision: 4 }, "1", ["a1b2c3d4e5"])).toMatchObject({
+      revision: 4,
+      previousIds: ["a1b2c3d4e5"],
+    });
+    expect(publicQuiz(sampleQuiz, "1").previousIds).toEqual([]);
+  });
+
   it("includes the newest published quiz's id", () => {
     expect(publicQuiz(sampleQuiz, "4").latest).toBe("4");
     expect(publicQuiz(sampleQuiz, null).latest).toBeNull();
@@ -94,27 +110,39 @@ describe("publicQuiz", () => {
 });
 
 describe("quizIndex", () => {
-  const quiz = (id: string, published: boolean, count: number): Quiz => ({
+  const quiz = (id: string, published: boolean, listed: boolean, count: number): Quiz => ({
     id,
     published,
+    listed,
+    revision: 1,
     questions: sampleQuiz.questions.slice(0, count),
   });
-  const quizzes = [quiz("1", true, 2), quiz("2", true, 1), quiz("3", false, 2)];
+  // Store order: numbered oldest first, then random ids.
+  const quizzes = [quiz("1", true, true, 2), quiz("2", true, true, 1), quiz("d4f5g6h7j8", false, false, 2), quiz("k3m9x2qv7t", true, false, 1)];
 
-  it("lists quizzes newest first with puzzle counts, marking drafts", () => {
+  it("lists only listed quizzes, newest first with puzzle counts", () => {
     expect(quizIndex(quizzes)).toEqual({
       latest: "2",
       quizzes: [
-        { id: "3", count: 2, draft: true },
         { id: "2", count: 1 },
         { id: "1", count: 2 },
       ],
     });
   });
 
-  it("leaves drafts out live", () => {
-    expect(quizIndex(playableQuizzes(quizzes, false)).quizzes.map((q) => q.id)).toEqual(["2", "1"]);
-    expect(latestId(playableQuizzes(quizzes, false))).toBe("2");
+  it("never lists an unlisted quiz or a draft live", () => {
+    const live = playableQuizzes(quizzes, false);
+    expect(quizIndex(live).quizzes.map((q) => q.id)).toEqual(["2", "1"]);
+    expect(latestId(live)).toBe("2");
+  });
+
+  it("shows drafts and unlisted quizzes after the numbered ones when asked (the emulator)", () => {
+    expect(quizIndex(quizzes, true).quizzes).toEqual([
+      { id: "2", count: 1 },
+      { id: "1", count: 2 },
+      { id: "d4f5g6h7j8", count: 2, draft: true },
+      { id: "k3m9x2qv7t", count: 1, unlisted: true },
+    ]);
   });
 
   it("copes with no quizzes", () => {
@@ -136,8 +164,8 @@ describe("validateQuizzes", () => {
   it("reports bad data", () => {
     const q = { id: 1, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hi", maxGuesses: 3 };
     const errors = validateQuizzes([
-      { id: "1", published: true, listed: true, questions: [q, { ...q, answer: "hi" }] },
-      { id: "1", published: false, listed: false, questions: [{ ...q, id: 2, maxGuesses: 0 }, { ...q, id: 2 }] },
+      { id: "1", published: true, listed: true, revision: 1, questions: [q, { ...q, answer: "hi" }] },
+      { id: "1", published: true, listed: true, revision: 1, questions: [{ ...q, id: 2, maxGuesses: 0 }, { ...q, id: 2 }] },
       { id: "v3", published: "yes" as unknown as boolean, questions: [] },
     ]);
     expect(errors.join("\n")).toMatch(/puzzle 1: duplicate puzzle id/);
@@ -148,23 +176,36 @@ describe("validateQuizzes", () => {
     expect(errors.join("\n")).toMatch(/quiz "v3": has no puzzles/);
     expect(errors.join("\n")).toMatch(/quiz "v3": published must be true or false/);
     expect(errors.join("\n")).toMatch(/quiz "v3": listed must be true or false/);
+    expect(errors.join("\n")).toMatch(/quiz "v3": revision must be a whole number/);
   });
 
-  it("accepts numbered and unlisted ids, and never lists an unlisted id", () => {
+  it("accepts numbered quizzes only when released, and random ids only when not listed", () => {
     const hidden = { ...sampleQuiz, id: "k3m9x2qv7t", listed: false };
-    expect(validateQuiz(hidden)).toEqual([]);
-    expect(validateQuiz({ ...sampleQuiz, listed: false })).toEqual([]);
+    expect(validateQuiz(sampleQuiz)).toEqual([]);
+    expect(validateQuiz(hidden)).toEqual([]); // unlisted: live by link
+    expect(validateQuiz({ ...hidden, published: false })).toEqual([]); // draft
     expect(validateQuiz({ ...hidden, listed: true }).join()).toMatch(/unlisted id can't be listed/);
+    expect(validateQuiz({ ...sampleQuiz, listed: false }).join()).toMatch(/numbered quiz must be published and listed/);
+    expect(validateQuiz({ ...sampleQuiz, published: false, listed: false }).join()).toMatch(/must be published and listed/);
+  });
+
+  it("rejects bad ids and a missing listed or revision", () => {
+    const hidden = { ...sampleQuiz, id: "k3m9x2qv7t", listed: false };
     expect(validateQuiz({ ...hidden, id: "K3M9X2QV7T" }).join()).toMatch(/id must be/);
     expect(validateQuiz({ ...hidden, id: "k3m9x2qv7" }).join()).toMatch(/id must be/);
-    const { listed: _listed, ...noListed } = sampleQuiz;
+    expect(validateQuiz({ ...hidden, id: "0123456789" }).join()).toMatch(/id must be/);
+    const { listed: _l, ...noListed } = sampleQuiz;
     expect(validateQuiz(noListed).join()).toMatch(/listed must be true or false/);
+    const { revision: _r, ...noRevision } = sampleQuiz;
+    expect(validateQuiz(noRevision).join()).toMatch(/revision must be a whole number/);
+    expect(validateQuiz({ ...sampleQuiz, revision: 0 }).join()).toMatch(/revision must be/);
+    expect(validateQuiz({ ...sampleQuiz, revision: 1.5 }).join()).toMatch(/revision must be/);
   });
 
   it("copes with malformed data from the database", () => {
     expect(validateQuiz(null)).toEqual(["quiz must be an object"]);
-    expect(validateQuiz({ id: "2", published: true, listed: true })).toEqual(['quiz "2": has no puzzles']);
-    const errors = validateQuiz({ id: "2", published: true, listed: true, questions: [null, { id: "x", answer: 5 }] }).join("\n");
+    expect(validateQuiz({ id: "2", published: true, listed: true, revision: 1 })).toEqual(['quiz "2": has no puzzles']);
+    const errors = validateQuiz({ id: "2", published: true, listed: true, revision: 1, questions: [null, { id: "x", answer: 5 }] }).join("\n");
     expect(errors).toMatch(/puzzle #1: id must be a whole number/);
     expect(errors).toMatch(/puzzle x: answer must be Chinese/);
     expect(errors).toMatch(/missing pinyin/);
@@ -178,6 +219,7 @@ describe("handleGuess", () => {
       id: "1",
       published: true,
       listed: true,
+      revision: 1,
       questions: [
         { id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test", maxGuesses: 5 },
         { id: 9, emoji: "🐟", answer: "摸鱼", pinyin: "mō yú", meaning: "slacking", maxGuesses: 2 },
@@ -187,12 +229,14 @@ describe("handleGuess", () => {
       id: "2",
       published: true,
       listed: true,
+      revision: 1,
       questions: [{ id: 7, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hello", maxGuesses: 3 }],
     },
     {
-      id: "3",
+      id: "d4f5g6h7j8",
       published: false,
       listed: false,
+      revision: 1,
       questions: [{ id: 1, emoji: "📝", answer: "草稿", pinyin: "cǎo gǎo", meaning: "draft", maxGuesses: 3 }],
     },
   ];
@@ -208,7 +252,7 @@ describe("handleGuess", () => {
 
   it("finds quizzes by id, or the newest published one for latest", () => {
     expect(findQuiz("1", quizzes)?.id).toBe("1");
-    // quiz 3 is newer but a draft, so latest stays on 2
+    // the draft is never "latest"
     expect(findQuiz("latest", quizzes)?.id).toBe("2");
     expect(findQuiz("4", quizzes)).toBeUndefined();
   });
@@ -216,11 +260,9 @@ describe("handleGuess", () => {
   it("keeps unlisted quizzes off latest but reachable by id", () => {
     const withHidden: Quiz[] = [
       ...quizzes,
-      { ...quizzes[1], id: "4", listed: false },
       { ...quizzes[1], id: "k3m9x2qv7t", listed: false },
     ];
     expect(findQuiz("latest", withHidden)?.id).toBe("2");
-    expect(findQuiz("4", withHidden)?.id).toBe("4");
     expect(findQuiz("k3m9x2qv7t", withHidden)?.id).toBe("k3m9x2qv7t");
     expect(guessInQuizzes(withHidden, "k3m9x2qv7t").status).toBe(200);
   });
@@ -229,14 +271,14 @@ describe("handleGuess", () => {
     const live = playableQuizzes(quizzes, false);
     const local = playableQuizzes(quizzes, true);
     expect(live.map((q) => q.id)).toEqual(["1", "2"]);
-    expect(local.map((q) => q.id)).toEqual(["1", "2", "3"]);
+    expect(local.map((q) => q.id)).toEqual(["1", "2", "d4f5g6h7j8"]);
 
-    expect(findQuiz("3", live)).toBeUndefined();
-    expect(handleGuess({ quizId: "3", questionId: 1, guess: "草稿" }, SECRET, live).status).toBe(404);
+    expect(findQuiz("d4f5g6h7j8", live)).toBeUndefined();
+    expect(handleGuess({ quizId: "d4f5g6h7j8", questionId: 1, guess: "草稿" }, SECRET, live).status).toBe(404);
 
-    expect(findQuiz("3", local)?.id).toBe("3");
+    expect(findQuiz("d4f5g6h7j8", local)?.id).toBe("d4f5g6h7j8");
     expect(findQuiz("latest", local)?.id).toBe("2");
-    const r = handleGuess({ quizId: "3", questionId: 1, guess: "草稿" }, SECRET, local);
+    const r = handleGuess({ quizId: "d4f5g6h7j8", questionId: 1, guess: "草稿" }, SECRET, local);
     expect((r.body as GuessResponse).solved).toBe(true);
   });
 
@@ -314,30 +356,219 @@ describe("handleGuess", () => {
 });
 
 describe("checkUpdate", () => {
-  const draft = { ...sampleQuiz, published: false };
-  const withQuestion = (i: number, change: Partial<Quiz["questions"][number]>): Quiz => ({
-    ...sampleQuiz,
-    questions: sampleQuiz.questions.map((q, j) => (j === i ? { ...q, ...change } : q)),
+  const withQuestion = (i: number, change: Partial<Quiz["questions"][number]>, base: Quiz = sampleQuiz): Quiz => ({
+    ...base,
+    questions: base.questions.map((q, j) => (j === i ? { ...q, ...change } : q)),
   });
+  // A quiz still being tested: random id, nothing frozen.
+  const unlisted: Quiz = { ...sampleQuiz, id: "k3m9x2qv7t", listed: false };
+  const draft: Quiz = { ...unlisted, published: false };
 
-  it("allows new quizzes, any change to a draft, and publishing a draft", () => {
+  it("allows new quizzes and any change to a quiz with a random id", () => {
     expect(checkUpdate(undefined, sampleQuiz)).toEqual([]);
     expect(checkUpdate(draft, { ...draft, questions: [sampleQuiz.questions[0]] })).toEqual([]);
-    expect(checkUpdate(draft, sampleQuiz)).toEqual([]);
+    expect(checkUpdate(draft, { ...draft, published: true })).toEqual([]);
+    // unlisted quizzes are live by link but still changeable, and can be pulled back
+    expect(checkUpdate(unlisted, withQuestion(0, { answer: "加班" }, unlisted))).toEqual([]);
+    expect(checkUpdate(unlisted, { ...unlisted, questions: [sampleQuiz.questions[0]] })).toEqual([]);
+    expect(checkUpdate(unlisted, draft)).toEqual([]);
   });
 
-  it("allows fixing a published quiz's pinyin or meaning", () => {
+  it("allows fixing a released quiz's pinyin or meaning", () => {
     expect(checkUpdate(sampleQuiz, withQuestion(0, { pinyin: "jiāyóu", meaning: "go go go" }))).toEqual([]);
   });
 
-  it("refuses to unpublish or change a published quiz's puzzles", () => {
-    expect(checkUpdate(sampleQuiz, draft).join()).toMatch(/can't be unpublished/);
+  it("refuses to unpublish or change a released quiz's puzzles", () => {
+    expect(checkUpdate(sampleQuiz, { ...sampleQuiz, published: false }).join()).toMatch(/can't be unpublished/);
     expect(checkUpdate(sampleQuiz, { ...sampleQuiz, questions: [sampleQuiz.questions[0]] }).join()).toMatch(
       /can't add or remove puzzles/,
     );
     expect(checkUpdate(sampleQuiz, withQuestion(0, { answer: "加班" })).join()).toMatch(/can't change its answer/);
     expect(checkUpdate(sampleQuiz, withQuestion(1, { maxGuesses: 6 })).join()).toMatch(/can't change its maxGuesses/);
     expect(checkUpdate(sampleQuiz, withQuestion(1, { emoji: "🐍" })).join()).toMatch(/can't change its emoji/);
+  });
+});
+
+describe("revisions", () => {
+  const withQuestion = (change: Partial<Quiz["questions"][number]>, base: Quiz = sampleQuiz): Quiz => ({
+    ...base,
+    questions: base.questions.map((q, j) => (j === 0 ? { ...q, ...change } : q)),
+  });
+  const existing: Quiz = { ...sampleQuiz, id: "k3m9x2qv7t", listed: false, revision: 2 };
+
+  it("knows which edits affect saved games", () => {
+    expect(affectsPlay(existing, existing)).toBe(false);
+    expect(affectsPlay(existing, withQuestion({ pinyin: "x", meaning: "y" }, existing))).toBe(false);
+    for (const change of [{ answer: "加班" }, { emoji: "🐍" }, { maxGuesses: 9 }, { id: 99 }]) {
+      expect(affectsPlay(existing, withQuestion(change, existing)), JSON.stringify(change)).toBe(true);
+    }
+    expect(affectsPlay(existing, { ...existing, questions: existing.questions.slice(1) })).toBe(true);
+    expect(affectsPlay(existing, { ...existing, questions: [...existing.questions].reverse() })).toBe(true);
+  });
+
+  it("raises the revision by one for an edit that affects play", () => {
+    expect(nextRevision(existing, withQuestion({ answer: "加班" }, existing))).toBe(3);
+    expect(nextRevision(existing, withQuestion({ answer: "加班" }, existing))).toBe(3);
+  });
+
+  it("keeps it for a pinyin or meaning fix, and never lowers it", () => {
+    expect(nextRevision(existing, withQuestion({ meaning: "fixed" }, existing))).toBe(2);
+    // a stale local file with an older number can't push it back down
+    expect(nextRevision(existing, { ...existing, revision: 1 })).toBe(2);
+    expect(nextRevision(existing, { ...withQuestion({ answer: "加班" }, existing), revision: 1 })).toBe(3);
+  });
+
+  it("lets a higher number in the file raise it by hand", () => {
+    expect(nextRevision(existing, { ...existing, revision: 5 })).toBe(5);
+    expect(nextRevision(existing, { ...withQuestion({ answer: "加班" }, existing), revision: 5 })).toBe(5);
+  });
+
+  it("starts a new quiz at the file's number, or 1", () => {
+    const { revision: _r, ...bare } = existing;
+    expect(nextRevision(undefined, bare)).toBe(1);
+    expect(nextRevision(undefined, { ...bare, revision: 4 })).toBe(4);
+    expect(nextRevision(undefined, { ...bare, revision: 0 })).toBe(1);
+  });
+});
+
+describe("aliases", () => {
+  const released: Quiz = { ...sampleQuiz, id: "5" };
+  const aliases = new Map([
+    ["a1b2c3d4e5", "5"],
+    ["z9y8x7w6v5", "5"],
+    ["q2w3e4r5t6", "9"],
+  ]);
+
+  it("lets a released quiz be found by its old random id", () => {
+    expect(findQuiz("5", [released], aliases)?.id).toBe("5");
+    expect(findQuiz("a1b2c3d4e5", [released], aliases)?.id).toBe("5");
+    expect(findQuiz("a1b2c3d4e5", [released])).toBeUndefined();
+  });
+
+  it("ignores an alias whose quiz isn't available, and never matches inherited object keys", () => {
+    expect(findQuiz("q2w3e4r5t6", [released], aliases)).toBeUndefined();
+    for (const key of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(findQuiz(key, [released], aliases), key).toBeUndefined();
+    }
+  });
+
+  it("lists a quiz's old ids", () => {
+    expect(previousIdsOf("5", aliases)).toEqual(["a1b2c3d4e5", "z9y8x7w6v5"]);
+    expect(previousIdsOf("6", aliases)).toEqual([]);
+  });
+
+  it("never makes an alias the latest quiz", () => {
+    expect(latestId([released])).toBe("5");
+    expect(findQuiz("latest", [released], aliases)?.id).toBe("5");
+  });
+
+  it("accepts guesses and tokens under the old id, and answers with the real id", () => {
+    const quizzes: Quiz[] = [released];
+    const q = released.questions[0];
+    const oldToken = signToken({ v: "a1b2c3d4e5", q: q.id, n: 1, done: false }, SECRET);
+    const r = handleGuess({ quizId: "5", questionId: q.id, guess: "加油", token: oldToken }, SECRET, quizzes, aliases);
+    expect(r.status).toBe(200);
+    const body = r.body as GuessResponse;
+    expect(body.guessesUsed).toBe(2);
+    expect(verifyToken(body.token, SECRET)?.v).toBe("5");
+    // the old id works as the quiz id too
+    expect(handleGuess({ quizId: "a1b2c3d4e5", questionId: q.id, guess: "加油" }, SECRET, quizzes, aliases).status).toBe(200);
+  });
+
+  it("rejects a token for a different quiz, even with aliases", () => {
+    const other = signToken({ v: "q2w3e4r5t6", q: 1, n: 1, done: false }, SECRET); // alias of 9, not 5
+    const r = handleGuess({ quizId: "5", questionId: 1, guess: "加油", token: other }, SECRET, [released], aliases);
+    expect(r.status).toBe(400);
+    const without = handleGuess({ quizId: "5", questionId: 1, guess: "加油", token: other }, SECRET, [released]);
+    expect(without.status).toBe(400);
+    const wrongQuestion = signToken({ v: "a1b2c3d4e5", q: 2, n: 1, done: false }, SECRET);
+    expect(handleGuess({ quizId: "5", questionId: 1, guess: "加油", token: wrongQuestion }, SECRET, [released], aliases).status).toBe(400);
+  });
+
+  it("validates alias documents", () => {
+    expect(validateAlias({ id: "a1b2c3d4e5", movedTo: "5" })).toEqual([]);
+    expect(validateAlias({ id: "5", movedTo: "6" }).join()).toMatch(/id must be a random/);
+    expect(validateAlias({ id: "a1b2c3d4e5", movedTo: "x" }).join()).toMatch(/movedTo must be a quiz number/);
+    expect(validateAlias({ id: "a1b2c3d4e5" }).join()).toMatch(/movedTo/);
+  });
+});
+
+describe("numbers and ids", () => {
+  it("gives the next number with no gaps", () => {
+    expect(nextNumber([])).toBe("1");
+    expect(nextNumber(["1", "2", "3"])).toBe("4");
+    expect(nextNumber(["1", "2", "k3m9x2qv7t", "10"])).toBe("11");
+    expect(nextNumber(["k3m9x2qv7t"])).toBe("1");
+  });
+
+  it("generates valid random ids that are never taken and never numbers", () => {
+    const taken = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const id = generateUnlistedId(taken, (max) => Math.floor(Math.random() * max));
+      expect(validateQuiz({ ...sampleQuiz, id, listed: false })).toEqual([]);
+      expect(taken.has(id)).toBe(false);
+      expect(/^[1-9][0-9]*$/.test(id)).toBe(false);
+      taken.add(id);
+    }
+  });
+
+  it("skips ids that are taken or all digits", () => {
+    // a source that yields all digits first (index 22..29 are 2..9), then letters, then a taken id
+    const picks = [...Array(10).fill(25), ...Array(10).fill(0), ...Array(10).fill(0), ...Array(10).fill(1)];
+    let i = 0;
+    const id = generateUnlistedId(new Set(["aaaaaaaaaa"]), () => picks[i++]);
+    expect(id).toBe("bbbbbbbbbb");
+  });
+});
+
+describe("planPromotion", () => {
+  const stored = (over: Record<string, unknown> = {}) => ({
+    published: true,
+    listed: false,
+    revision: 3,
+    questions: sampleQuiz.questions,
+    ...over,
+  });
+  const docs = (...extra: { id: string; data: Record<string, unknown> }[]) => [
+    { id: "1", data: stored({ listed: true, revision: 1 }) },
+    { id: "2", data: stored({ listed: true, revision: 1 }) },
+    ...extra,
+  ];
+
+  it("moves a quiz to the next number, keeps its revision and leaves an alias", () => {
+    const r = planPromotion(docs({ id: "k3m9x2qv7t", data: stored() }), "k3m9x2qv7t");
+    expect(r).toMatchObject({ ok: true, to: "3", alias: { id: "k3m9x2qv7t", movedTo: "3" } });
+    if (!r.ok) return;
+    expect(r.quiz).toMatchObject({ id: "3", published: true, listed: true, revision: 3 });
+    expect(validateQuiz(r.quiz)).toEqual([]);
+  });
+
+  it("can release a draft straight to a number", () => {
+    const r = planPromotion(docs({ id: "k3m9x2qv7t", data: stored({ published: false }) }), "k3m9x2qv7t");
+    expect(r).toMatchObject({ ok: true, to: "3" });
+  });
+
+  it("starts at 1 when nothing is released yet", () => {
+    expect(planPromotion([{ id: "k3m9x2qv7t", data: stored() }], "k3m9x2qv7t")).toMatchObject({ ok: true, to: "1" });
+  });
+
+  it("refuses numbered quizzes, missing quizzes and ones already released", () => {
+    expect(planPromotion(docs(), "2")).toMatchObject({ ok: false });
+    expect(planPromotion(docs(), "k3m9x2qv7t")).toMatchObject({ ok: false, error: expect.stringMatching(/no quiz/) });
+    const done = docs({ id: "k3m9x2qv7t", data: { movedTo: "2" } });
+    expect(planPromotion(done, "k3m9x2qv7t")).toMatchObject({ ok: false, error: expect.stringMatching(/already released as quiz 2/) });
+  });
+
+  it("refuses when the released numbers have a gap or include an unpublished one", () => {
+    const gap = [{ id: "1", data: stored({ listed: true }) }, { id: "3", data: stored({ listed: true }) }, { id: "k3m9x2qv7t", data: stored() }];
+    expect(planPromotion(gap, "k3m9x2qv7t")).toMatchObject({ ok: false, error: expect.stringMatching(/gap/) });
+    const draftNumber = docs({ id: "3", data: stored({ published: false }) }, { id: "k3m9x2qv7t", data: stored() });
+    expect(planPromotion(draftNumber, "k3m9x2qv7t")).toMatchObject({ ok: false, error: expect.stringMatching(/quiz 3 has a number but isn't published/) });
+  });
+
+  it("refuses an invalid quiz", () => {
+    const r = planPromotion(docs({ id: "k3m9x2qv7t", data: stored({ questions: [] }) }), "k3m9x2qv7t");
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/has no puzzles/) });
   });
 });
 

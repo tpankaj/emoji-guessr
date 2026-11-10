@@ -14,8 +14,8 @@ export interface Question {
 
 export interface Quiz {
   /**
-   * Appears in the URL (/q/<id>). Either the next number ("1", "2", …) or, for a quiz that
-   * must be hard to find, a random 10-character id from `npm run quiz -- new-id`.
+   * Appears in the URL (/q/<id>). A number ("1", "2", …) once released, or a random
+   * 10-character id (`npm run quiz -- new-id`) until then.
    */
   id: string;
   /**
@@ -29,5 +29,22 @@ export interface Quiz {
    * A quiz with a random id can never be listed.
    */
   listed: boolean;
+  /**
+   * Starts at 1. `npm run quiz` raises it when an edit would make players' saved progress
+   * wrong (an answer, emoji, guess limit or the puzzle list changed), and browsers then start
+   * the quiz over. Pinyin and meaning fixes don't change it. Carried over when a quiz is released.
+   */
+  revision: number;
   questions: Question[];
+}
+
+/**
+ * Left behind at a quiz's old random id when it is released under a number, so links shared
+ * during testing keep working. Stored as a document `{ movedTo }` next to the quizzes.
+ */
+export interface QuizAlias {
+  /** The old random id (the document id). */
+  id: string;
+  /** The number the quiz was released as. */
+  movedTo: string;
 }

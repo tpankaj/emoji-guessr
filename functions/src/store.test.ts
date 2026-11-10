@@ -5,13 +5,14 @@ const quiz = (id: string, published = true) => ({
   id,
   published,
   listed: !/[a-z]/.test(id) && published,
+  revision: 1,
   questions: [{ id: 1, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hi", maxGuesses: 3 }],
 });
 
 describe("QuizStore", () => {
   it("sorts quizzes by number and leaves out invalid ones", async () => {
     const onInvalid = vi.fn();
-    const store = new QuizStore(async () => [quiz("10"), quiz("2"), { id: "3", published: true, listed: true }], {
+    const store = new QuizStore(async () => [quiz("10"), quiz("2"), { id: "3", published: true, listed: true, revision: 1 }], {
       ttlMs: 0,
       onInvalid,
     });
@@ -57,5 +58,46 @@ describe("QuizStore", () => {
     fail = true;
     expect((await store.all()).map((q) => q.id)).toEqual(["1"]);
     await expect(new QuizStore(async () => Promise.reject(new Error("down")), { ttlMs: 0 }).all()).rejects.toThrow();
+  });
+
+  describe("aliases", () => {
+    const alias = (id: string, movedTo: string) => ({ id, movedTo });
+
+    it("loads aliases next to quizzes without treating them as quizzes", async () => {
+      const store = new QuizStore(async () => [quiz("1"), quiz("2"), alias("a1b2c3d4e5", "2")], { ttlMs: 0 });
+      const snap = await store.snapshot();
+      expect(snap.quizzes.map((q) => q.id)).toEqual(["1", "2"]);
+      expect([...snap.aliases]).toEqual([["a1b2c3d4e5", "2"]]);
+      expect((await store.all()).map((q) => q.id)).toEqual(["1", "2"]);
+    });
+
+    it("drops an alias that points at a missing quiz, or sits on a real quiz's id", async () => {
+      const store = new QuizStore(
+        async () => [quiz("1"), quiz("k3m9x2qv7t"), alias("a1b2c3d4e5", "7"), alias("k3m9x2qv7t", "1")],
+        { ttlMs: 0 },
+      );
+      expect((await store.snapshot()).aliases.size).toBe(0);
+    });
+
+    it("reports an invalid alias and keeps loading", async () => {
+      const onInvalid = vi.fn();
+      const store = new QuizStore(async () => [quiz("1"), alias("1", "2"), { id: "a1b2c3d4e5", movedTo: "oops" }], { ttlMs: 0, onInvalid });
+      expect((await store.snapshot()).quizzes.map((q) => q.id)).toEqual(["1"]);
+      expect(onInvalid).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the last good aliases if a reload fails", async () => {
+      let down = false;
+      const store = new QuizStore(
+        async () => {
+          if (down) throw new Error("down");
+          return [quiz("2"), alias("a1b2c3d4e5", "2")];
+        },
+        { ttlMs: 0 },
+      );
+      await store.snapshot();
+      down = true;
+      expect([...(await store.snapshot()).aliases]).toEqual([["a1b2c3d4e5", "2"]]);
+    });
   });
 });

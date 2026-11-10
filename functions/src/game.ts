@@ -1,9 +1,13 @@
-import type { Quiz } from "./types";
+import type { Quiz, QuizAlias } from "./types";
 import { HAN_ONLY, chars, score, type Mark } from "./scoring";
 import { signToken, verifyToken, type TokenState } from "./token";
 
 export interface PublicQuiz {
   id: string;
+  /** Bumped when a change would make players' saved progress wrong; the site then starts them fresh. */
+  revision: number;
+  /** Ids this quiz used to have before release (see QuizAlias), so saved progress can follow it. */
+  previousIds: string[];
   /** The newest published quiz's id, so an older quiz can point players to it. */
   latest: string | null;
   questions: { id: number; emoji: string; length: number; maxGuesses: number }[];
@@ -12,8 +16,11 @@ export interface PublicQuiz {
 /** The archive list: ids and puzzle counts only, never clues or answers. */
 export interface QuizIndex {
   latest: string | null;
-  /** Newest first. `draft` appears only in the emulator, where drafts are playable. */
-  quizzes: { id: string; count: number; draft?: true }[];
+  /**
+   * Newest first. Live this is the listed quizzes only. In the emulator it also holds drafts
+   * and unlisted quizzes, marked `draft` and `unlisted`.
+   */
+  quizzes: { id: string; count: number; draft?: true; unlisted?: true }[];
 }
 
 export interface Reveal {
@@ -50,31 +57,57 @@ export const NUMBERED_ID = /^[1-9][0-9]*$/;
 export const UNLISTED_ID = /^(?=.*[a-z])[a-z0-9]{10}$/;
 
 /**
- * Looks up a quiz by id, or for "latest" the newest quiz that is published *and* listed
- * (never a draft, never a hidden one). Any published quiz is reachable by its own id.
+ * Old random ids of quizzes that were released under a number, mapped to that number. A
+ * promoted quiz leaves one behind so its shared link keeps working. Keys are random ids
+ * from the request path, hence a Map (no prototype keys to trip over).
  */
-export function findQuiz(id: string, quizzes: Quiz[]): Quiz | undefined {
+export type Aliases = ReadonlyMap<string, string>;
+
+/**
+ * Looks up a quiz by id, or for "latest" the newest quiz that is published *and* listed
+ * (never a draft, never a hidden one). Any published quiz is reachable by its own id, and a
+ * promoted quiz by its old random id too (see Aliases).
+ */
+export function findQuiz(id: string, quizzes: Quiz[], aliases: Aliases = new Map()): Quiz | undefined {
   if (id === "latest") return quizzes.filter((q) => q.published && q.listed).at(-1);
-  return quizzes.find((q) => q.id === id);
+  const direct = quizzes.find((q) => q.id === id);
+  if (direct) return direct;
+  const target = aliases.get(id);
+  return target === undefined ? undefined : quizzes.find((q) => q.id === target);
 }
 
-/** The id of the newest published quiz (never a draft), or null if there is none. */
+/** The id of the newest published, listed quiz, or null if there is none. */
 export const latestId = (quizzes: Quiz[]): string | null => findQuiz("latest", quizzes)?.id ?? null;
 
-/** Every quiz a player can reach, newest first, for the archive page. */
-export function quizIndex(quizzes: Quiz[]): QuizIndex {
+/** The old random ids that now lead to this quiz. */
+export const previousIdsOf = (quizId: string, aliases: Aliases): string[] =>
+  [...aliases].filter(([, to]) => to === quizId).map(([from]) => from).sort();
+
+/**
+ * The archive list, newest first. Live, only listed quizzes appear, so hidden ones stay
+ * findable only by link. With `includeHidden` (the emulator) drafts and unlisted quizzes
+ * appear too, after the numbered ones.
+ */
+export function quizIndex(quizzes: Quiz[], includeHidden = false): QuizIndex {
+  const numbered = quizzes.filter((q) => NUMBERED_ID.test(q.id) && q.listed).reverse();
+  const hidden = includeHidden ? quizzes.filter((q) => !(NUMBERED_ID.test(q.id) && q.listed)) : [];
   return {
     latest: latestId(quizzes),
-    quizzes: [...quizzes]
-      .reverse()
-      .map((q) => ({ id: q.id, count: q.questions.length, ...(q.published ? {} : { draft: true as const }) })),
+    quizzes: [...numbered, ...hidden].map((q) => ({
+      id: q.id,
+      count: q.questions.length,
+      ...(q.published ? {} : { draft: true as const }),
+      ...(q.published && !q.listed ? { unlisted: true as const } : {}),
+    })),
   };
 }
 
 /** What the browser is allowed to see: no answers, pinyin or meanings. */
-export function publicQuiz(quiz: Quiz, latest: string | null): PublicQuiz {
+export function publicQuiz(quiz: Quiz, latest: string | null, previousIds: string[] = []): PublicQuiz {
   return {
     id: quiz.id,
+    revision: quiz.revision,
+    previousIds,
     latest,
     questions: quiz.questions.map((q) => ({
       id: q.id,
@@ -98,7 +131,16 @@ export function validateQuiz(raw: unknown): string[] {
   if (!idOk) errors.push(`quiz "${id}": id must be a number like "1" or a 10-character unlisted id`);
   if (typeof quiz.published !== "boolean") errors.push(`quiz "${id}": published must be true or false`);
   if (typeof quiz.listed !== "boolean") errors.push(`quiz "${id}": listed must be true or false`);
-  else if (quiz.listed && typeof quiz.id === "string" && UNLISTED_ID.test(quiz.id) && !NUMBERED_ID.test(quiz.id)) {
+  if (!Number.isInteger(quiz.revision) || (quiz.revision as number) < 1) {
+    errors.push(`quiz "${id}": revision must be a whole number ≥ 1`);
+  }
+  // A number is given out only at release, so a numbered quiz is always live and on the main
+  // site, and a quiz with a random id never is.
+  if (typeof quiz.id === "string" && NUMBERED_ID.test(quiz.id)) {
+    if (quiz.published === false || quiz.listed === false) {
+      errors.push(`quiz "${id}": a numbered quiz must be published and listed (use a random id until it's released)`);
+    }
+  } else if (quiz.listed === true) {
     errors.push(`quiz "${id}": a quiz with an unlisted id can't be listed`);
   }
   if (!Array.isArray(quiz.questions) || quiz.questions.length === 0) {
@@ -138,13 +180,14 @@ export function validateQuizzes(quizzes: unknown[]): string[] {
 }
 
 /**
- * Why replacing `existing` with `next` isn't allowed (empty when it is). Drafts can change
- * freely. Once published, a quiz can't be unpublished, and its puzzles (count, order, ids,
- * emoji, answers, guess limits) are frozen: shared links and saved progress depend on them.
- * Fixing a pinyin or meaning is fine.
+ * Why replacing `existing` with `next` isn't allowed (empty when it is). A quiz with a random
+ * id (draft or unlisted) can change freely; only the revision (see nextRevision) tells
+ * players' browsers to start over. A numbered quiz is released: it can't be unpublished, and
+ * its puzzles (count, order, ids, emoji, answers, guess limits) are frozen, because shared
+ * links and saved progress depend on them. Fixing a pinyin or meaning is fine.
  */
 export function checkUpdate(existing: Quiz | undefined, next: Quiz): string[] {
-  if (!existing?.published) return [];
+  if (!existing?.published || !NUMBERED_ID.test(existing.id)) return [];
   const errors: string[] = [];
   if (!next.published) errors.push(`quiz "${next.id}" is published and can't be unpublished`);
   if (existing.questions.length !== next.questions.length) {
@@ -164,11 +207,11 @@ export function checkUpdate(existing: Quiz | undefined, next: Quiz): string[] {
 
 const fail = (status: number, error: string): Result => ({ status, body: { error } });
 
-export function handleGuess(input: unknown, secret: string, quizzes: Quiz[]): Result {
+export function handleGuess(input: unknown, secret: string, quizzes: Quiz[], aliases: Aliases = new Map()): Result {
   const { quizId, questionId, guess, token } = (input ?? {}) as Record<string, unknown>;
 
   // "latest" is only for loading; guesses must name the exact quiz being played.
-  const quiz = typeof quizId === "string" && quizId !== "latest" ? findQuiz(quizId, quizzes) : undefined;
+  const quiz = typeof quizId === "string" && quizId !== "latest" ? findQuiz(quizId, quizzes, aliases) : undefined;
   if (!quiz) return fail(404, "Unknown quiz");
 
   const question = quiz.questions.find((q) => q.id === questionId);
@@ -183,7 +226,9 @@ export function handleGuess(input: unknown, secret: string, quizzes: Quiz[]): Re
   let state: TokenState = { v: quiz.id, q: question.id, n: 0, done: false };
   if (token !== undefined && token !== null) {
     const parsed = typeof token === "string" ? verifyToken(token, secret) : null;
-    if (!parsed || parsed.v !== quiz.id || parsed.q !== question.id) {
+    // A token from before the quiz was released names its old random id; that still counts.
+    const forThisQuiz = parsed && (parsed.v === quiz.id || aliases.get(parsed.v) === quiz.id);
+    if (!parsed || !forThisQuiz || parsed.q !== question.id) {
       return fail(400, "Invalid progress token");
     }
     state = parsed;
@@ -207,4 +252,104 @@ export function handleGuess(input: unknown, secret: string, quizzes: Quiz[]): Re
     body.reveal = { answer: question.answer, pinyin: question.pinyin, meaning: question.meaning };
   }
   return { status: 200, body };
+}
+
+/** True if a raw database document is an alias rather than a quiz. */
+export const isAlias = (raw: unknown): boolean =>
+  typeof raw === "object" && raw !== null && "movedTo" in raw;
+
+/** Problems with an alias document (empty when valid). */
+export function validateAlias(raw: unknown): string[] {
+  const a = (raw ?? {}) as Partial<QuizAlias>;
+  const errors: string[] = [];
+  if (typeof a.id !== "string" || !UNLISTED_ID.test(a.id) || NUMBERED_ID.test(a.id)) {
+    errors.push(`alias "${a.id}": id must be a random unlisted id`);
+  }
+  if (typeof a.movedTo !== "string" || !NUMBERED_ID.test(a.movedTo)) {
+    errors.push(`alias "${a.id}": movedTo must be a quiz number`);
+  }
+  return errors;
+}
+
+const PLAY_FIELDS = ["id", "emoji", "answer", "maxGuesses"] as const;
+
+/**
+ * True if changing `a` to `b` could make a saved game wrong: a puzzle was added, removed,
+ * reordered, or had its id, emoji, answer or guess limit changed. Pinyin and meaning don't count.
+ */
+export function affectsPlay(a: Quiz, b: Quiz): boolean {
+  if (a.questions.length !== b.questions.length) return true;
+  return a.questions.some((old, i) => PLAY_FIELDS.some((f) => old[f] !== b.questions[i][f]));
+}
+
+/**
+ * The revision to store when `next` replaces `existing`. It goes up by one when the change
+ * affects play, never goes down, and can be raised by hand (a higher number in the file wins).
+ * A new quiz starts at the file's number, or 1.
+ */
+export function nextRevision(existing: Quiz | undefined, next: Omit<Quiz, "revision"> & { revision?: number }): number {
+  const wanted = Number.isInteger(next.revision) ? (next.revision as number) : 1;
+  if (!existing) return Math.max(1, wanted);
+  const base = existing.revision + (affectsPlay(existing, next as Quiz) ? 1 : 0);
+  return Math.max(base, wanted);
+}
+
+/** The number the next release gets: one past the highest numbered quiz, so numbers never have gaps. */
+export function nextNumber(ids: string[]): string {
+  const numbers = ids.filter((id) => NUMBERED_ID.test(id)).map(Number);
+  return String(numbers.length ? Math.max(...numbers) + 1 : 1);
+}
+
+/** A random unlisted id that isn't in `taken`. Lowercase letters and digits without lookalikes (no 0/o, 1/l/i). */
+export function generateUnlistedId(taken: ReadonlySet<string>, randomInt: (max: number) => number): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  for (;;) {
+    const id = Array.from({ length: 10 }, () => alphabet[randomInt(alphabet.length)]).join("");
+    // The letter requirement keeps an id from ever looking like a number.
+    if (UNLISTED_ID.test(id) && !taken.has(id)) return id;
+  }
+}
+
+export type Promotion =
+  | { ok: true; to: string; quiz: Quiz; alias: QuizAlias }
+  | { ok: false; error: string };
+
+/**
+ * Releases a quiz that has a random id: it moves to the next number and leaves an alias at
+ * the old id. `docs` is every document in the collection, as raw data with its id.
+ * The numbers in use must run 1..N without gaps and all be published, so the new number
+ * leaves no gap.
+ */
+export function planPromotion(docs: { id: string; data: Record<string, unknown> }[], fromId: string): Promotion {
+  if (!UNLISTED_ID.test(fromId) || NUMBERED_ID.test(fromId)) {
+    return { ok: false, error: `"${fromId}" doesn't have a random id; only a quiz with a random id can be released` };
+  }
+  const source = docs.find((d) => d.id === fromId);
+  if (!source) return { ok: false, error: `no quiz "${fromId}"` };
+  if (isAlias(source.data)) {
+    return { ok: false, error: `"${fromId}" was already released as quiz ${String(source.data.movedTo)}` };
+  }
+  const numbered = docs.filter((d) => NUMBERED_ID.test(d.id));
+  const unpublished = numbered.find((d) => d.data.published !== true);
+  if (unpublished) {
+    return { ok: false, error: `quiz ${unpublished.id} has a number but isn't published; fix that before releasing another` };
+  }
+  const numbers = numbered.map((d) => Number(d.id)).sort((a, b) => a - b);
+  if (numbers.some((n, i) => n !== i + 1)) {
+    return { ok: false, error: `the numbered quizzes (${numbers.join(", ")}) have a gap; releasing would not fix it` };
+  }
+  const to = nextNumber(numbered.map((d) => d.id));
+  if (docs.some((d) => d.id === to)) return { ok: false, error: `quiz ${to} already exists` };
+
+  // Check the quiz as it will be stored.
+  const quiz = { ...source.data, id: to, published: true, listed: true } as unknown as Quiz;
+  const problems = validateQuiz(quiz);
+  if (problems.length) return { ok: false, error: `quiz "${fromId}" isn't valid:\n  ${problems.join("\n  ")}` };
+
+  return {
+    ok: true,
+    to,
+    quiz,
+    alias: { id: fromId, movedTo: to },
+  };
 }
