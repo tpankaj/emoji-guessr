@@ -3,8 +3,10 @@ import {
   checkUpdate,
   findQuiz,
   handleGuess,
+  latestId,
   playableQuizzes,
   publicQuiz,
+  quizIndex,
   validateQuiz,
   validateQuizzes,
   type GuessResponse,
@@ -76,13 +78,57 @@ const sampleQuiz: Quiz = {
 
 describe("publicQuiz", () => {
   it("never exposes answers, pinyin or meanings", () => {
-    const json = JSON.stringify(publicQuiz(sampleQuiz));
+    const json = JSON.stringify(publicQuiz(sampleQuiz, "1"));
     for (const q of sampleQuiz.questions) {
       for (const ch of q.answer) expect(json).not.toContain(ch);
       expect(json).not.toContain(q.pinyin);
       expect(json).not.toContain(q.meaning);
     }
-    expect(publicQuiz(sampleQuiz).questions[0]).toEqual({ id: 1, emoji: "➕⛽️", length: 2, maxGuesses: 2 });
+    expect(publicQuiz(sampleQuiz, "1").questions[0]).toEqual({ id: 1, emoji: "➕⛽️", length: 2, maxGuesses: 2 });
+  });
+
+  it("includes the newest published quiz's id", () => {
+    expect(publicQuiz(sampleQuiz, "4").latest).toBe("4");
+    expect(publicQuiz(sampleQuiz, null).latest).toBeNull();
+  });
+});
+
+describe("quizIndex", () => {
+  const quiz = (id: string, published: boolean, count: number): Quiz => ({
+    id,
+    published,
+    questions: sampleQuiz.questions.slice(0, count),
+  });
+  const quizzes = [quiz("1", true, 2), quiz("2", true, 1), quiz("3", false, 2)];
+
+  it("lists quizzes newest first with puzzle counts, marking drafts", () => {
+    expect(quizIndex(quizzes)).toEqual({
+      latest: "2",
+      quizzes: [
+        { id: "3", count: 2, draft: true },
+        { id: "2", count: 1 },
+        { id: "1", count: 2 },
+      ],
+    });
+  });
+
+  it("leaves drafts out live", () => {
+    expect(quizIndex(playableQuizzes(quizzes, false)).quizzes.map((q) => q.id)).toEqual(["2", "1"]);
+    expect(latestId(playableQuizzes(quizzes, false))).toBe("2");
+  });
+
+  it("copes with no quizzes", () => {
+    expect(quizIndex([])).toEqual({ latest: null, quizzes: [] });
+  });
+
+  it("never exposes clues, answers, pinyin or meanings", () => {
+    const json = JSON.stringify(quizIndex(quizzes));
+    for (const q of sampleQuiz.questions) {
+      expect(json).not.toContain(q.emoji);
+      for (const ch of q.answer) expect(json).not.toContain(ch);
+      expect(json).not.toContain(q.pinyin);
+      expect(json).not.toContain(q.meaning);
+    }
   });
 });
 

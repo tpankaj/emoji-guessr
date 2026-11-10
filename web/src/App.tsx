@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { loadAnalytics } from "./analytics";
 import { ApiError, getQuiz, postGuess } from "./api";
 import { Board, flipDuration } from "./components/Board";
+import { Archive } from "./components/Archive";
 import { HelpModal } from "./components/HelpModal";
 import { RevealCard } from "./components/RevealCard";
+import { ARCHIVE_PATH, Shell } from "./components/Shell";
 import { Summary } from "./components/Summary";
 import { TriedChars } from "./components/TriedChars";
 import { quizPath } from "./share";
@@ -21,7 +23,14 @@ function quizIdFromPath(path: string): string | null {
   return /^\/q\/([1-9][0-9]*|(?=[a-z0-9]*[a-z])[a-z0-9]{10})\/?$/.exec(path)?.[1] ?? null;
 }
 
+const isArchivePath = (path: string) => path.replace(/\/$/, "") === ARCHIVE_PATH;
+
 export function App() {
+  // Every navigation is a full page load, so the route is fixed for this render tree.
+  return isArchivePath(location.pathname) ? <Archive /> : <QuizPage />;
+}
+
+function QuizPage() {
   const [quiz, setQuiz] = useState<PublicQuiz | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -108,9 +117,14 @@ export function App() {
       <Shell>
         <div class="center">
           <p>This quiz doesn’t exist.</p>
-          <a class="btn primary" href="/">
-            Play the latest quiz
-          </a>
+          <div class="actions">
+            <a class="btn primary" href="/">
+              Play the latest quiz
+            </a>
+            <a class="btn" href={ARCHIVE_PATH}>
+              See all quizzes
+            </a>
+          </div>
         </div>
       </Shell>
     );
@@ -260,42 +274,5 @@ export function App() {
         </div>
       )}
     </Shell>
-  );
-}
-
-interface ShellProps {
-  children: preact.ComponentChildren;
-  onHelp?: () => void;
-  quiz?: PublicQuiz;
-  progress?: Progress;
-}
-
-function Shell({ children, onHelp, quiz, progress }: ShellProps) {
-  return (
-    <div class="app">
-      <header class="header">
-        <div class="header-side" />
-        <h1>
-          Emoji Guessr
-        </h1>
-        <div class="header-side right">
-          {onHelp && (
-            <button class="icon-btn" onClick={onHelp} aria-label="How to play">
-              ?
-            </button>
-          )}
-        </div>
-      </header>
-      {quiz && progress && (
-        <nav class="progress" aria-label="Puzzle progress">
-          {quiz.questions.map((q, i) => {
-            const s = progress.questions[q.id];
-            const cls = s?.done ? (s.solved ? "solved" : "failed") : i === progress.current ? "current" : "";
-            return <span key={q.id} class={`dot ${cls}`} title={`Puzzle ${i + 1}`} />;
-          })}
-        </nav>
-      )}
-      {children}
-    </div>
   );
 }

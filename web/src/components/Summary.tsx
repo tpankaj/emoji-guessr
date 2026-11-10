@@ -1,5 +1,6 @@
 import { buildShareText, shareText, solvedCount } from "../share";
 import type { Progress, PublicQuiz } from "../types";
+import { ARCHIVE_PATH } from "./Shell";
 
 interface Props {
   quiz: PublicQuiz;
@@ -30,6 +31,9 @@ export function Summary({ quiz, progress, notify }: Props) {
       <button class="btn primary wide share" onClick={onShare}>
         Share results
       </button>
+      <a class="btn wide more" href={ARCHIVE_PATH}>
+        More quizzes
+      </a>
 
       <h3>Answers</h3>
       <ul class="answers">

@@ -1,4 +1,4 @@
-import type { GuessResponse, PublicQuiz } from "./types";
+import type { GuessResponse, PublicQuiz, QuizIndex } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -26,6 +26,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** Loads a quiz by id, or the newest one with "latest". */
 export const getQuiz = (id: string) => request<PublicQuiz>(`/quiz/${encodeURIComponent(id)}`);
+
+/** Lists every quiz (ids and puzzle counts) for the archive page. */
+export const getQuizIndex = () => request<QuizIndex>("/quizzes");
 
 export const postGuess = (quizId: string, questionId: number, guess: string, token?: string) =>
   request<GuessResponse>("/guess", {
