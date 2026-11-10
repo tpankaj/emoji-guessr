@@ -46,6 +46,7 @@ export function websiteSecrets(quizzes) {
  */
 export function repoSecrets(quizzes) {
   const fields = ["answer", "pinyin", "meaning", "emoji"];
+  // Public = released: published, listed and numbered (the listed flag follows from the id).
   const isPublic = (q) => q.published && q.listed;
   const published = new Set(values(quizzes.filter(isPublic), fields));
   const hidden = values(quizzes.filter((q) => !isPublic(q)), fields);
