@@ -30,6 +30,8 @@ export interface QuizIndex {
 export interface Reveal {
   answer: string;
   pinyin: string;
+  /** Missing in progress saved before zhuyin was added. */
+  zhuyin?: string;
   meaning: string;
 }
 
