@@ -38,7 +38,7 @@ const store = new QuizStore(firestoreFetcher(), {
 });
 
 export const api = onRequest(
-  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 5, memory: "256MiB" },
+  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 10, memory: "256MiB" },
   async (req, res) => {
     // Hosting forwards /api/... with the prefix intact; tolerate both forms.
     const path = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
