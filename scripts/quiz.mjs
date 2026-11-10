@@ -6,7 +6,6 @@
 //   npm run quiz -- promote <random-id>           release a quiz: move it to the next number
 //   npm run quiz -- download <id|all>             save quizzes to quizzes/<id>.json
 //   npm run quiz -- delete <id>                   delete a quiz that isn't released
-//   npm run quiz -- migrate                       one-time: convert the database to listed/unlisted quizzes
 //
 // A quiz starts as a draft with a random id (published: false), becomes unlisted when published
 // (playable by its link only), and is released with `promote`, which gives it the next number.
@@ -29,7 +28,6 @@ const { initializeApp } = requireFromFunctions("firebase-admin/app");
 const { getFirestore } = requireFromFunctions("firebase-admin/firestore");
 const { NUMBERED_ID, checkUpdate, generateUnlistedId, isAlias, nextNumber, nextRevision, planPromotion, validateQuiz } =
   requireFromFunctions("./lib/game.js");
-const { planMigration } = requireFromFunctions("./lib/migration.js");
 const { QUIZ_COLLECTION } = requireFromFunctions("./lib/store.js");
 
 const EMULATOR_PROJECT = "demo-emoji-guessr";
@@ -249,55 +247,6 @@ async function remove(id) {
   console.log(`✔ quiz ${id} deleted`);
 }
 
-/**
- * One-time conversion of the live database: released quizzes gain listed and revision, and
- * every numbered draft moves to a random id. Safe to run twice (the second run does nothing)
- * and safe while the old server is live, which ignores the new fields.
- */
-async function migrate() {
-  const docs = (await collection.get()).docs.map(fromDoc);
-  const taken = new Set(docs.map((d) => d.id));
-  const newId = () => {
-    const id = generateUnlistedId(taken, randomInt);
-    taken.add(id);
-    return id;
-  };
-  const plan = planMigration(docs, newId);
-
-  console.log(`Migration of ${target}: ${docs.length} documents`);
-  for (const p of plan.problems) console.log(`  ⚠ ${p}`);
-  for (const w of plan.warnings) console.log(`  ⚠ ${w}`);
-  for (const s of plan.steps) {
-    if (s.kind === "update") console.log(`  quiz ${s.id}: keeps its number; add listed: ${s.data.listed}, revision: ${s.data.revision}`);
-    else console.log(`  draft ${s.from}: becomes ${s.to} (random id; the number is freed)`);
-  }
-  if (plan.unchanged.length) console.log(`  already fine: ${plan.unchanged.join(", ")}`);
-  if (plan.problems.length) console.log("  The documents with problems are left as they are.");
-  if (!plan.steps.length) {
-    console.log("Nothing to migrate.");
-    return;
-  }
-  if (!(await confirm("Go ahead?"))) fail("cancelled, nothing changed");
-
-  for (const s of plan.steps) {
-    if (s.kind === "update") {
-      await collection.doc(s.id).set(s.data);
-      writeLocal({ id: s.id, ...s.data });
-      console.log(`✔ quiz ${s.id} updated`);
-    } else {
-      // Write the new document and delete the old one together, so a draft is never lost or doubled.
-      const batch = db.batch();
-      batch.set(collection.doc(s.to), s.data);
-      batch.delete(collection.doc(s.from));
-      await batch.commit();
-      writeLocal({ id: s.to, ...s.data });
-      if (existsSync(localPath(s.from))) unlinkSync(localPath(s.from));
-      console.log(`✔ draft ${s.from} → ${s.to}`);
-    }
-  }
-  console.log("Done. Check it with: npm run quiz -- list");
-}
-
 try {
   if (command === "list") await list();
   else if (command === "new-id") await newId();
@@ -305,8 +254,7 @@ try {
   else if (command === "upload") await upload(rest);
   else if (command === "promote") await promote(rest[0]);
   else if (command === "download") await download(rest[0]);
-  else if (command === "migrate") await migrate();
-  else fail("usage: npm run quiz -- <list | new-id | upload <files…> | promote <id> | download <id|all> | delete <id> | migrate> [--emulator] [--yes] [--force]");
+  else fail("usage: npm run quiz -- <list | new-id | upload <files…> | promote <id> | download <id|all> | delete <id>> [--emulator] [--yes] [--force]");
 } catch (e) {
   if (!useEmulator && /credential|Could not load the default credentials|PERMISSION_DENIED|UNAUTHENTICATED/i.test(String(e))) {
     fail(`couldn't access ${target}: ${e.message}\nSign in first — see README → "Managing quizzes".`);
