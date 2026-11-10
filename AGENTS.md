@@ -112,6 +112,7 @@ Both read the local `quizzes/` files and skip with a warning if there are none.
 
 - **No stored keys.** GitHub signs in through Workload Identity Federation: pool `github`, provider `github-oidc`, which only accepts tokens where `repository == 'tpankaj/emoji-guessr'` and `ref == 'refs/heads/main'`. Repo variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SERVICE_ACCOUNT` point the workflow at them.
 - **Deploy account** `github-deployer@emoji-guessr-e99da.iam.gserviceaccount.com` has: Cloud Functions Developer, Firebase Hosting Admin, Firebase Rules Admin, Firebase Viewer, Service Usage Consumer, Secret Manager Viewer, Artifact Registry Reader, and Service Account User on two accounts only: the function's runtime account (`846603703445-compute@developer.gserviceaccount.com`) and the App Engine default account (`emoji-guessr-e99da@appspot.gserviceaccount.com`), which the Firebase CLI checks on every functions deploy. It has no database access.
+- **Actions are pinned to commit SHAs**, each with a trailing version comment (`uses: actions/checkout@<sha> # v7.0.1`), so a moved or hijacked tag can't change what the deploy job runs. Dependabot (github-actions, weekly) bumps the SHA and the comment together. Pin any new action the same way.
 - **No leak check in CI** (the quiz files aren't in the repo). The commit hooks and a local `npm run deploy` still run it.
 - `firebase-tools` is pinned in the workflow; bump it alongside the local CLI.
 - Deploying from your machine with `npm run deploy` still works.
