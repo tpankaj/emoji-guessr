@@ -29,26 +29,36 @@ Run the tests with `npm test`.
 
 ## Adding a quiz
 
-Write a quiz file in `quizzes/` (this folder is ignored by git):
+A quiz starts as a draft with a random id, can be shared by its link while you test it, and is then released under the next number.
+
+```bash
+npm run quiz -- new-id          # prints an unused id, e.g. k3m9x2qv7t
+```
+
+Write `quizzes/k3m9x2qv7t.json` (this folder is ignored by git):
 
 ```json
 {
-  "id": "1",
-  "published": true,
-  "listed": true,
+  "id": "k3m9x2qv7t",
+  "published": false,
+  "listed": false,
   "questions": [
     { "id": 1, "emoji": "➕⛽️", "answer": "加油", "pinyin": "jiā yóu", "meaning": "“Add oil!” — keep going", "maxGuesses": 2 }
   ]
 }
 ```
 
-Upload it to your local database and play it:
+Upload it to your local database and play it at `localhost:5050/q/k3m9x2qv7t`:
 
 ```bash
-npm run quiz -- upload quizzes/1.json --emulator
+npm run quiz -- upload quizzes/k3m9x2qv7t.json --emulator
 ```
 
-Without `--emulator`, the same command uploads to the live site. Quizzes with `"published": false` are drafts that only you can play locally. A published quiz with `"listed": false` stays off the main page but works at its own link; for a hard-to-guess link, give it a random id from `npm run quiz -- new-id` instead of a number.
+Without `--emulator`, the same command uploads to the live site. Then:
+
+- Set `"published": true` and upload again: the quiz is live, but only people with its link can play it. It isn't on the main page or in the archive.
+- Edit and upload as often as you like while testing. If an edit would make a tester's saved progress wrong (a changed answer, say), the script says so and their progress restarts.
+- `npm run quiz -- promote k3m9x2qv7t` releases it as the next number. The old link keeps working and testers keep their progress. Released quizzes can't be unpublished, deleted or have their puzzles changed.
 
 ## Deploying
 

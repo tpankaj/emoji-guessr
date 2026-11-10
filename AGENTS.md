@@ -19,12 +19,13 @@ Live at <https://emojiguessr.io> (also `https://emoji-guessr-e99da.web.app`). Fi
 ```
 web/                 Vite + Preact + TypeScript site (Firebase Hosting, served from web/dist)
 functions/           Cloud Function `api` (Node 22, us-central1): quiz loading, scoring, tokens, logs
-  src/game.ts        scoring, validation (validateQuiz), publish rules (checkUpdate), guess handling
-  src/store.ts       QuizStore: loads + validates + caches quizzes from Firestore
+  src/game.ts        validation (validateQuiz), release rules (checkUpdate), revisions, aliases, releasing (planPromotion), guess handling
+  src/store.ts       QuizStore: loads + validates + caches quizzes and aliases from Firestore
+  src/migration.ts   one-time database migration (delete with `npm run quiz -- migrate` once it has run live)
   src/token.ts       HMAC-signed progress tokens
   src/types.ts       Quiz / Question types (server only — never import from web/)
 scripts/
-  quiz.mjs           npm run quiz: list / upload / download / delete quizzes
+  quiz.mjs           npm run quiz: list / new-id / upload / promote / download / delete / migrate
   quiz-secrets.mjs   shared by both leak checks: loads quizzes/, ALLOWED_PHRASES
   check-leaks.mjs    website leak check (runs in npm run deploy)
   check-commit-leaks.mjs  git commit leak check (run by .githooks/)
@@ -37,17 +38,25 @@ quizzes/             git-ignored local quiz files (working copies; Firestore is 
 ## Architecture and invariants
 
 - **Simplified and traditional both count.** `score()` converts guess and answer to simplified one character at a time (`toSimplified` in `functions/src/scoring.ts`, OpenCC data via `opencc-js`, including Taiwan and Hong Kong variants), so 摸魚 solves 摸鱼 and lengths never change. Store answers in simplified; the answer card shows the stored form.
-- **Answers never reach the browser before a puzzle ends.** `GET /api/quiz/<id|latest>` returns only `{id, latest, questions: [{id, emoji, length, maxGuesses}]}` (`latest` = newest published quiz id, for the "Newer quiz" link). `GET /api/quizzes` returns `{latest, quizzes: [{id, count, draft?}]}`, newest first, for the archive (ids and puzzle counts only; `draft` only in the emulator). `POST /api/guess {quizId, questionId, guess, token}` returns `{marks, solved, done, guessesUsed, token, reveal?}`; `reveal` (answer, pinyin, meaning) only when solved or out of guesses. There is no hint.
-- **Progress needs no database.** The token is `base64url(JSON {v: quizId, q: questionId, n: guessesUsed, done}).HMAC-SHA256` with secret `TOKEN_SECRET`. Tokens are bound to quiz + question. Replaying an older token can grant extra guesses but never the answer; this is accepted (honor system, like clearing localStorage).
-- **Quizzes live in Firestore**, collection `quizzes`, document id = quiz id (`"1"`, `"2"`, …), fields `published` (bool), `listed` (bool, required) and `questions` (array). The id is a number, or for a hard-to-find quiz a random 10-character id (`UNLISTED_ID` in `game.ts`, made by `npm run quiz -- new-id`). Every puzzle requires `id`, `emoji`, `answer` (Chinese characters only), `pinyin`, `meaning`, `maxGuesses` — no defaults.
-- **Caching:** `QuizStore` reloads at most every 5 minutes live (every request in the emulator), shares concurrent loads, drops invalid quizzes (logged as `invalid_quiz`) and falls back to the last good set if a reload fails. A newly published quiz can take up to 5 minutes to appear.
-- **Drafts** (`published: false`) are invisible live (`/q/<id>` 404, guesses rejected) but playable in the emulator. `/` plays the highest-numbered quiz that is **published and listed** and the site pins the URL to `/q/<id>`.
-- **Listed vs. unlisted.** `listed` only decides whether `/` may play a quiz; every published quiz works at `/q/<id>` either way. Toggle it freely with `npm run quiz` (the script says "SHOW"/"HIDE"); hiding never breaks existing links. A quiz with a random id can never be `listed: true` (validation rejects it), and its share text reads `Emoji Guessr (unlisted)` instead of `#<id>`. Unlisted is obscurity, not access control: anyone with the link can play and pass it on. Drafts should keep `listed: false`; set `published` and `listed` together when publishing.
-- **Navigation**: `/archive` lists every quiz newest first, with the player's status from localStorage (not started / in progress / solved count). It's linked from the header's list button, the end-of-quiz "More quizzes" button and the not-found page. An older quiz shows "Newer quiz: #<latest>" under the header. Every link is a full page load (no client router); `App` picks the page from `location.pathname`.
-- **Published quizzes are permanent.** Never unpublish, delete, or change a published quiz's puzzle count/order/ids/emoji/answers/maxGuesses — shared links and saved progress depend on them. Fixing pinyin/meaning is fine. `checkUpdate` enforces this in `npm run quiz`; `--force` overrides (owner used it once, pre-launch, to trim quiz 1).
+- **Answers never reach the browser before a puzzle ends.** `GET /api/quiz/<id|latest>` returns only `{id, revision, previousIds, latest, questions: [{id, emoji, length, maxGuesses}]}` (`latest` = newest released quiz id, for the "Newer quiz" link; `previousIds` = the quiz's old random ids, see Quiz lifecycle). `GET /api/quizzes` returns `{latest, quizzes: [{id, count, draft?, unlisted?}]}`, newest first, for the archive (ids and puzzle counts only). Live it lists released quizzes only; the emulator also lists drafts and unlisted quizzes, flagged. `POST /api/guess {quizId, questionId, guess, token}` returns `{marks, solved, done, guessesUsed, token, reveal?}`; `reveal` (answer, pinyin, meaning) only when solved or out of guesses. There is no hint.
+- **Progress needs no database.** The token is `base64url(JSON {v: quizId, q: questionId, n: guessesUsed, done}).HMAC-SHA256` with secret `TOKEN_SECRET`. Tokens are bound to quiz + question (a token issued under a quiz's old random id still counts after it is released). Replaying an older token can grant extra guesses but never the answer; this is accepted (honor system, like clearing localStorage).
+- **Quizzes live in Firestore**, collection `quizzes`, document id = quiz id, fields `published` (bool), `listed` (bool), `revision` (whole number ≥ 1) and `questions` (array). Every puzzle requires `id`, `emoji`, `answer` (Chinese characters only), `pinyin`, `meaning`, `maxGuesses` — no defaults. The id is either a number (`"1"`, `"2"`, …) or a random 10-character id (`UNLISTED_ID` in `game.ts`, made by `npm run quiz -- new-id`).
+- **Quiz lifecycle.** A number is given out only when a quiz is released, so numbers never have gaps and `/` and the archive are the numbered quizzes only.
+
+  | Stage | Id | published | listed | Who can play it |
+  |---|---|---|---|---|
+  | Draft | random | false | false | you, in the emulator (live it 404s, guesses are rejected) |
+  | Unlisted | random | true | false | anyone with the `/q/<random>` link; not on `/` or in the archive |
+  | Released | next number | true | true | everyone; `/` plays the highest number |
+
+  `validateQuiz` enforces it: a numbered quiz must be published and listed, a random-id quiz can never be listed. `npm run quiz -- promote <random-id>` releases a quiz in one transaction (so two releases can't take the same number): it writes the quiz under the next number (keeping its revision) and leaves an **alias** at the old id, a document `{movedTo: "<n>"}`. Aliases are permanent. The server resolves them in `findQuiz`, so `/q/<old>` loads quiz `<n>` (and the page rewrites the address to `/q/<n>`), `GET /api/quiz/<n>` returns the old ids as `previousIds`, and guesses and tokens made under the old id are accepted. Share text for a random-id quiz reads `Emoji Guessr (unlisted)` instead of `#<id>`. Unlisted is obscurity, not access control: anyone with the link can play and pass it on.
+- **Revision.** `npm run quiz -- upload` owns `revision`: it goes up by one when an edit would make saved progress wrong (a puzzle's id, emoji, answer or guess limit changed, or puzzles added, removed or reordered), never goes down, and a higher number in the file raises it by hand (e.g. to push out a meaning fix to testers who already finished that puzzle). The page keeps the revision with saved progress and starts the quiz over when they differ. Progress saved before revisions existed has none, which counts as revision 1, so current players keep theirs.
+- **Caching:** `QuizStore` reloads at most every 5 minutes live (every request in the emulator), shares concurrent loads, drops invalid quizzes and aliases (logged as `invalid_quiz`) and falls back to the last good set if a reload fails. A newly published or released quiz can take up to 5 minutes to appear.
+- **Navigation**: `/archive` lists the released quizzes newest first, with the player's status from localStorage (not started / in progress / solved count). It's linked from the header's list button, the end-of-quiz "More quizzes" button and the not-found page. An older quiz shows "Newer quiz: #<latest>" under the header. Every link is a full page load (no client router); `App` picks the page from `location.pathname`.
+- **Released quizzes are permanent.** Never unpublish, delete, or change a numbered quiz's puzzle count/order/ids/emoji/answers/maxGuesses — shared links and saved progress depend on them. Fixing pinyin/meaning is fine. `checkUpdate` enforces this in `npm run quiz`; `--force` overrides (owner used it once, pre-launch, to trim quiz 1). Quizzes with a random id, drafts and unlisted alike, can be edited, unpublished and deleted freely.
 - **No caching of the API** (`Cache-Control: no-store`): a stale puzzle list paired with a new server once showed "NaN guesses left".
-- **Saved progress** is per quiz in localStorage (`emoji-guessr:progress:<quizId>`); `emoji-guessr:help-seen` remembers the How to play popup. `?reset` clears progress, on localhost only.
-- **Share text**: `Emoji Guessr #<id>  <solved>/<total>`, one line per puzzle (`1. 🟩🟨 🟩🟩`, ❌ if failed), then `https://<origin>/q/<id>`. No emoji clues, no characters.
+- **Saved progress** is per quiz in localStorage (`emoji-guessr:progress:<quizId>`, with the quiz `revision`); `emoji-guessr:help-seen` remembers the How to play popup. On load, progress from another revision is dropped, and if nothing is saved under the quiz's id, progress saved under one of its `previousIds` moves over (so testers keep their place after a release). `?reset` clears progress, on localhost only.
+- **Share text**: `Emoji Guessr #<id>  <solved>/<total>` (`Emoji Guessr (unlisted)` for a random id), one line per puzzle (`1. 🟩🟨 🟩🟩`, ❌ if failed), then `https://<origin>/q/<id>`. No emoji clues, no characters.
 - **Colors** are the project's own palette (jade / gold / warm gray on warm neutrals), defined as CSS variables in `web/src/styles.css`.
 
 ## Commands
@@ -55,13 +64,13 @@ quizzes/             git-ignored local quiz files (working copies; Firestore is 
 ```bash
 npm run install:all     # install functions/ and web/ dependencies
 npm run setup:hooks     # git config core.hooksPath .githooks (once per clone)
-npm test                # vitest in functions/ (game, validation, publish rules, store)
+npm test                # vitest in functions/ (game, validation, release rules, store, migration) and web/ (saved progress, share text)
 npm run build           # functions (tsc, clean lib/) + web (tsc + vite)
 npm run emulators       # build, then functions + hosting + firestore emulators on demo-emoji-guessr
 npm run dev             # Vite at :5173, proxies /api to the functions emulator
 npm run check:leaks     # website leak check
 npm run deploy          # test + build + check:leaks + firebase deploy (functions, hosting, firestore:rules)
-npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--emulator] [--yes] [--force]
+npm run quiz -- <list | new-id | upload <files…> | promote <id> | download <id|all> | delete <id> | migrate> [--emulator] [--yes] [--force]
 ```
 
 ## Dependency notes
@@ -82,15 +91,17 @@ npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--
 ## Managing quizzes (live)
 
 - `npm run quiz` uses Google Application Default Credentials: `gcloud auth application-default login` with the account that owns the project (the owner has done this). Live writes ask for confirmation unless `--yes`.
-- Publishing flow: write `quizzes/<n>.json` with `published: false` → test with `--emulator` at `localhost:5050/q/<n>` → optionally upload the draft live → set `published: true` (and `listed: true` for the main site, or leave it `false` for an unlisted quiz) and upload. No deploy needed.
-- `delete` only works on drafts. `download all` refreshes the local files (and so the leak checks).
+- **Publishing flow:** `npm run quiz -- new-id` → write `quizzes/<random-id>.json` with `published: false, listed: false` (no `revision`; the script adds it) → test with `--emulator` at `localhost:5050/q/<id>` → set `published: true` and upload to make it an unlisted quiz, playable by its link (send the link to testers; fix feedback by editing and uploading again) → `npm run quiz -- promote <id>` to release it as the next number (the old link keeps working and testers keep their progress). No deploy needed. `promote` also renames the local file to `quizzes/<n>.json`.
+- `upload` refuses a numbered file that isn't the next number, a numbered draft, and a listed random-id quiz; it prints when an edit will restart players' progress (revision bump) and when a publish is unlisted.
+- `delete` works on anything with a random id, never on numbered quizzes or aliases. `download all` refreshes the local files (and so the leak checks).
+- **One-time live migration** (when this model first ships): `npm run quiz -- migrate` gives every released quiz `listed: true` and `revision: 1`, and moves each numbered draft to a random id (writes the new document and deletes the old in one batch). It shows what it will do and asks first, can be run twice safely, and is safe to run before the deploy: the server running today ignores the new fields and drops the random-id drafts as invalid (a few `invalid_quiz` log lines, nothing served live). Run it **before** merging to `main`, because the new server rejects any quiz without `listed` and `revision` and the site would show nothing. Then `npm run quiz -- list`, merge, and remove `functions/src/migration.ts` and the `migrate` command.
 
 ## Leak checks
 
 Both read the local `quizzes/` files and skip with a warning if there are none.
 
 - **Website** (`check-leaks.mjs`): fails if any quiz's answer, pinyin or meaning is in `web/dist`; warns on single answer characters.
-- **Commits** (`check-commit-leaks.mjs` via hooks): blocks added lines or commit messages containing a **draft or unlisted** puzzle's answer, pinyin, meaning or full emoji clue, or an unlisted quiz's random id. Anything also in a published, listed quiz counts as public and passes. Takes ~0.06s.
+- **Commits** (`check-commit-leaks.mjs` via hooks): blocks added lines or commit messages containing a **draft or unlisted** puzzle's answer, pinyin, meaning or full emoji clue, or the random id of a quiz that has one. Anything also in a released quiz counts as public and passes (a released quiz's old random id is no longer in `quizzes/`, so it passes too). Takes ~0.06s.
 - `ALLOWED_PHRASES` in `quiz-secrets.mjs` lists UI phrases that contain an answer but are fine (下次加油！, 加油！).
 - Git history was rewritten once to remove a draft puzzle that had been committed; don't reintroduce answers.
 
