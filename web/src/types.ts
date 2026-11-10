@@ -12,7 +12,15 @@ export interface PublicQuestion {
 
 export interface PublicQuiz {
   id: string;
+  /** The newest published quiz's id. */
+  latest: string | null;
   questions: PublicQuestion[];
+}
+
+/** GET /api/quizzes: every quiz a player can reach, newest first. */
+export interface QuizIndex {
+  latest: string | null;
+  quizzes: { id: string; count: number; draft?: true }[];
 }
 
 export interface Reveal {

@@ -51,3 +51,17 @@ export function markHelpSeen() {
     // ignore
   }
 }
+
+export type ArchiveStatus =
+  | { kind: "new" }
+  | { kind: "playing"; played: number }
+  | { kind: "done"; solved: number };
+
+/** How far this player got in a quiz, from saved progress, for the archive list. */
+export function archiveStatus(quizId: string, count: number): ArchiveStatus {
+  const states = Object.values(loadProgress(quizId).questions);
+  const played = states.filter((s) => s.done).length;
+  if (played >= count) return { kind: "done", solved: states.filter((s) => s.solved).length };
+  if (played > 0 || states.some((s) => s.guesses.length > 0)) return { kind: "playing", played };
+  return { kind: "new" };
+}

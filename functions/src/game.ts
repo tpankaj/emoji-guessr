@@ -4,7 +4,16 @@ import { signToken, verifyToken, type TokenState } from "./token";
 
 export interface PublicQuiz {
   id: string;
+  /** The newest published quiz's id, so an older quiz can point players to it. */
+  latest: string | null;
   questions: { id: number; emoji: string; length: number; maxGuesses: number }[];
+}
+
+/** The archive list: ids and puzzle counts only, never clues or answers. */
+export interface QuizIndex {
+  latest: string | null;
+  /** Newest first. `draft` appears only in the emulator, where drafts are playable. */
+  quizzes: { id: string; count: number; draft?: true }[];
 }
 
 export interface Reveal {
@@ -41,10 +50,24 @@ export function findQuiz(id: string, quizzes: Quiz[]): Quiz | undefined {
   return quizzes.find((q) => q.id === id);
 }
 
+/** The id of the newest published quiz (never a draft), or null if there is none. */
+export const latestId = (quizzes: Quiz[]): string | null => findQuiz("latest", quizzes)?.id ?? null;
+
+/** Every quiz a player can reach, newest first, for the archive page. */
+export function quizIndex(quizzes: Quiz[]): QuizIndex {
+  return {
+    latest: latestId(quizzes),
+    quizzes: [...quizzes]
+      .reverse()
+      .map((q) => ({ id: q.id, count: q.questions.length, ...(q.published ? {} : { draft: true as const }) })),
+  };
+}
+
 /** What the browser is allowed to see: no answers, pinyin or meanings. */
-export function publicQuiz(quiz: Quiz): PublicQuiz {
+export function publicQuiz(quiz: Quiz, latest: string | null): PublicQuiz {
   return {
     id: quiz.id,
+    latest,
     questions: quiz.questions.map((q) => ({
       id: q.id,
       emoji: q.emoji,

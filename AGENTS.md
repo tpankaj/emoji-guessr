@@ -37,11 +37,12 @@ quizzes/             git-ignored local quiz files (working copies; Firestore is 
 ## Architecture and invariants
 
 - **Simplified and traditional both count.** `score()` converts guess and answer to simplified one character at a time (`toSimplified` in `functions/src/scoring.ts`, OpenCC data via `opencc-js`, including Taiwan and Hong Kong variants), so 摸魚 solves 摸鱼 and lengths never change. Store answers in simplified; the answer card shows the stored form.
-- **Answers never reach the browser before a puzzle ends.** `GET /api/quiz/<id|latest>` returns only `{id, questions: [{id, emoji, length, maxGuesses}]}`. `POST /api/guess {quizId, questionId, guess, token}` returns `{marks, solved, done, guessesUsed, token, reveal?}`; `reveal` (answer, pinyin, meaning) only when solved or out of guesses. There is no hint.
+- **Answers never reach the browser before a puzzle ends.** `GET /api/quiz/<id|latest>` returns only `{id, latest, questions: [{id, emoji, length, maxGuesses}]}` (`latest` = newest published quiz id, for the "Newer quiz" link). `GET /api/quizzes` returns `{latest, quizzes: [{id, count, draft?}]}`, newest first, for the archive (ids and puzzle counts only; `draft` only in the emulator). `POST /api/guess {quizId, questionId, guess, token}` returns `{marks, solved, done, guessesUsed, token, reveal?}`; `reveal` (answer, pinyin, meaning) only when solved or out of guesses. There is no hint.
 - **Progress needs no database.** The token is `base64url(JSON {v: quizId, q: questionId, n: guessesUsed, done}).HMAC-SHA256` with secret `TOKEN_SECRET`. Tokens are bound to quiz + question. Replaying an older token can grant extra guesses but never the answer; this is accepted (honor system, like clearing localStorage).
 - **Quizzes live in Firestore**, collection `quizzes`, document id = quiz id (`"1"`, `"2"`, …), fields `published` (bool) and `questions` (array). Every puzzle requires `id`, `emoji`, `answer` (Chinese characters only), `pinyin`, `meaning`, `maxGuesses` — no defaults.
 - **Caching:** `QuizStore` reloads at most every 5 minutes live (every request in the emulator), shares concurrent loads, drops invalid quizzes (logged as `invalid_quiz`) and falls back to the last good set if a reload fails. A newly published quiz can take up to 5 minutes to appear.
 - **Drafts** (`published: false`) are invisible live (`/q/<id>` 404, guesses rejected) but playable in the emulator. `/` plays the highest-numbered **published** quiz and the site pins the URL to `/q/<id>`.
+- **Navigation**: `/archive` lists every quiz newest first, with the player's status from localStorage (not started / in progress / solved count). It's linked from the header's list button, the end-of-quiz "More quizzes" button and the not-found page. An older quiz shows "Newer quiz: #<latest>" under the header. Every link is a full page load (no client router); `App` picks the page from `location.pathname`.
 - **Published quizzes are permanent.** Never unpublish, delete, or change a published quiz's puzzle count/order/ids/emoji/answers/maxGuesses — shared links and saved progress depend on them. Fixing pinyin/meaning is fine. `checkUpdate` enforces this in `npm run quiz`; `--force` overrides (owner used it once, pre-launch, to trim quiz 1).
 - **No caching of the API** (`Cache-Control: no-store`): a stale puzzle list paired with a new server once showed "NaN guesses left".
 - **Saved progress** is per quiz in localStorage (`emoji-guessr:progress:<quizId>`); `emoji-guessr:help-seen` remembers the How to play popup. `?reset` clears progress, on localhost only.
@@ -113,13 +114,14 @@ Both read the local `quizzes/` files and skip with a warning if there are none.
 
 ## Analytics and logs
 
-- **Cloudflare Web Analytics** (cookie-free): token in `web/src/analytics.ts`; the beacon loads after the URL settles on `/q/<id>` or the not-found page, never on localhost.
-- **Function logs** are structured, one line per request, with `jsonPayload.event` = `quiz_load`, `guess` (quizId, questionId, guess text, guessNumber, solved, done), `guess_rejected` (warning, with reason), `not_found`, `error`, `invalid_quiz`. Never log tokens or player-identifying data. Logs are kept 30 days by default; this volume stays inside Cloud Logging's free allowance. View: Firebase console → Functions → Logs, or Logs Explorer:
+- **Cloudflare Web Analytics** (cookie-free): token in `web/src/analytics.ts`; the beacon loads after the URL settles on `/q/<id>`, `/archive` or the not-found page, never on localhost.
+- **Function logs** are structured, one line per request, with `jsonPayload.event` = `quiz_load`, `quiz_list` (archive opened), `guess` (quizId, questionId, guess text, guessNumber, solved, done), `guess_rejected` (warning, with reason), `not_found`, `error`, `invalid_quiz`. Never log tokens or player-identifying data. Logs are kept 30 days by default; this volume stays inside Cloud Logging's free allowance. View: Firebase console → Functions → Logs, or Logs Explorer:
 
 | What | Query |
 |---|---|
 | All game events | `resource.labels.service_name="api" AND jsonPayload.event:*` |
 | Quizzes opened | `jsonPayload.event="quiz_load"` |
+| Archive opened | `jsonPayload.event="quiz_list"` |
 | Every guess | `jsonPayload.event="guess"` |
 | Puzzles solved | `jsonPayload.event="guess" AND jsonPayload.solved=true` |
 | Puzzles failed | `jsonPayload.event="guess" AND jsonPayload.done=true AND jsonPayload.solved=false` |

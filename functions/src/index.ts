@@ -1,7 +1,15 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
-import { findQuiz, handleGuess, playableQuizzes, publicQuiz, type GuessResponse } from "./game";
+import {
+  findQuiz,
+  handleGuess,
+  latestId,
+  playableQuizzes,
+  publicQuiz,
+  quizIndex,
+  type GuessResponse,
+} from "./game";
 import { QuizStore, firestoreFetcher } from "./store";
 
 // Set in production with: firebase functions:secrets:set TOKEN_SECRET
@@ -48,7 +56,14 @@ export const api = onRequest(
           res.status(404).json({ error: "Quiz not found" });
           return;
         }
-        res.json(publicQuiz(quiz));
+        res.json(publicQuiz(quiz, latestId(quizzes)));
+        return;
+      }
+
+      // GET /quizzes: the archive list (ids and puzzle counts only)
+      if (req.method === "GET" && path === "/quizzes") {
+        logger.info("quiz_list", { event: "quiz_list" });
+        res.json(quizIndex(quizzes));
         return;
       }
 
