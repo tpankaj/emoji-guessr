@@ -13,12 +13,21 @@ export interface Question {
 }
 
 export interface Quiz {
-  /** Appears in the URL (/q/<id>) and share text. Use the next number: "1", "2", … */
+  /**
+   * Appears in the URL (/q/<id>). Either the next number ("1", "2", …) or, for a quiz that
+   * must be hard to find, a random 10-character id from `npm run quiz -- new-id`.
+   */
   id: string;
   /**
    * false = draft: invisible on the live site, but playable at /q/<id> in the local
    * emulator for testing. Once true and deployed, never set it back (shared links break).
    */
   published: boolean;
+  /**
+   * true = "/" may play this quiz (the newest published, listed one wins). false = hidden
+   * from the main site but still playable at /q/<id> once published. Can be toggled freely.
+   * A quiz with a random id can never be listed.
+   */
+  listed: boolean;
   questions: Question[];
 }

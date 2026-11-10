@@ -4,18 +4,24 @@ import { QuizStore } from "./store";
 const quiz = (id: string, published = true) => ({
   id,
   published,
+  listed: !/[a-z]/.test(id) && published,
   questions: [{ id: 1, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hi", maxGuesses: 3 }],
 });
 
 describe("QuizStore", () => {
   it("sorts quizzes by number and leaves out invalid ones", async () => {
     const onInvalid = vi.fn();
-    const store = new QuizStore(async () => [quiz("10"), quiz("2"), { id: "3", published: true }], {
+    const store = new QuizStore(async () => [quiz("10"), quiz("2"), { id: "3", published: true, listed: true }], {
       ttlMs: 0,
       onInvalid,
     });
     expect((await store.all()).map((q) => q.id)).toEqual(["2", "10"]);
     expect(onInvalid).toHaveBeenCalledWith("3", ['quiz "3": has no puzzles']);
+  });
+
+  it("puts quizzes with random ids after the numbered ones", async () => {
+    const store = new QuizStore(async () => [quiz("k3m9x2qv7t"), quiz("10"), quiz("2"), quiz("a1b2c3d4e5")], { ttlMs: 0 });
+    expect((await store.all()).map((q) => q.id)).toEqual(["2", "10", "a1b2c3d4e5", "k3m9x2qv7t"]);
   });
 
   it("reuses loaded quizzes until the cache expires", async () => {

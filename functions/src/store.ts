@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { validateQuiz } from "./game";
+import { NUMBERED_ID, validateQuiz } from "./game";
 import type { Quiz } from "./types";
 
 /** The Firestore collection holding one document per quiz; the document id is the quiz id. */
@@ -62,8 +62,10 @@ export class QuizStore {
       if (errors.length) this.opts.onInvalid?.((q as { id?: unknown })?.id, errors);
       else quizzes.push(q as Quiz);
     }
-    // Oldest first, so the last published one is "latest".
-    quizzes.sort((a, b) => Number(a.id) - Number(b.id));
+    // Numbered quizzes oldest first, so the last published, listed one is "latest";
+    // quizzes with random ids go after them (they're never "latest" anyway).
+    const rank = (q: Quiz) => (NUMBERED_ID.test(q.id) ? Number(q.id) : Infinity);
+    quizzes.sort((a, b) => (rank(a) === rank(b) ? a.id.localeCompare(b.id) : rank(a) < rank(b) ? -1 : 1));
     this.cached = { quizzes, at: now() };
     return quizzes;
   }

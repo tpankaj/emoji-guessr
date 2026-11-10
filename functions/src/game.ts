@@ -35,9 +35,17 @@ export function playableQuizzes(quizzes: Quiz[], includeDrafts: boolean): Quiz[]
   return includeDrafts ? quizzes : quizzes.filter((q) => q.published);
 }
 
-/** Looks up a quiz by id, or for "latest" the newest *published* one (never a draft). */
+/** Numbered quizzes: "1", "2", … They form the main sequence that "/" plays. */
+export const NUMBERED_ID = /^[1-9][0-9]*$/;
+/** Hidden quizzes: 10 random lowercase letters and digits, at least one letter (so never a number). */
+export const UNLISTED_ID = /^(?=.*[a-z])[a-z0-9]{10}$/;
+
+/**
+ * Looks up a quiz by id, or for "latest" the newest quiz that is published *and* listed
+ * (never a draft, never a hidden one). Any published quiz is reachable by its own id.
+ */
 export function findQuiz(id: string, quizzes: Quiz[]): Quiz | undefined {
-  if (id === "latest") return quizzes.filter((q) => q.published).at(-1);
+  if (id === "latest") return quizzes.filter((q) => q.published && q.listed).at(-1);
   return quizzes.find((q) => q.id === id);
 }
 
@@ -63,10 +71,13 @@ export function validateQuiz(raw: unknown): string[] {
   const quiz = raw as Record<string, unknown>;
   const id = String(quiz.id);
   const errors: string[] = [];
-  if (typeof quiz.id !== "string" || !/^[1-9][0-9]*$/.test(quiz.id)) {
-    errors.push(`quiz "${id}": id must be a number like "1"`);
-  }
+  const idOk = typeof quiz.id === "string" && (NUMBERED_ID.test(quiz.id) || UNLISTED_ID.test(quiz.id));
+  if (!idOk) errors.push(`quiz "${id}": id must be a number like "1" or a 10-character unlisted id`);
   if (typeof quiz.published !== "boolean") errors.push(`quiz "${id}": published must be true or false`);
+  if (typeof quiz.listed !== "boolean") errors.push(`quiz "${id}": listed must be true or false`);
+  else if (quiz.listed && typeof quiz.id === "string" && UNLISTED_ID.test(quiz.id) && !NUMBERED_ID.test(quiz.id)) {
+    errors.push(`quiz "${id}": a quiz with an unlisted id can't be listed`);
+  }
   if (!Array.isArray(quiz.questions) || quiz.questions.length === 0) {
     errors.push(`quiz "${id}": has no puzzles`);
     return errors;

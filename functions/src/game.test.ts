@@ -67,6 +67,7 @@ describe("token", () => {
 const sampleQuiz: Quiz = {
   id: "1",
   published: true,
+  listed: true,
   questions: [
     { id: 1, emoji: "➕⛽️", answer: "加油", pinyin: "jiā yóu", meaning: "keep going", maxGuesses: 2 },
     { id: 2, emoji: "🧪📝", answer: "测试题目", pinyin: "cè shì tí mù", meaning: "test fixture", maxGuesses: 5 },
@@ -89,8 +90,8 @@ describe("validateQuizzes", () => {
   it("reports bad data", () => {
     const q = { id: 1, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hi", maxGuesses: 3 };
     const errors = validateQuizzes([
-      { id: "1", published: true, questions: [q, { ...q, answer: "hi" }] },
-      { id: "1", published: false, questions: [{ ...q, id: 2, maxGuesses: 0 }, { ...q, id: 2 }] },
+      { id: "1", published: true, listed: true, questions: [q, { ...q, answer: "hi" }] },
+      { id: "1", published: false, listed: false, questions: [{ ...q, id: 2, maxGuesses: 0 }, { ...q, id: 2 }] },
       { id: "v3", published: "yes" as unknown as boolean, questions: [] },
     ]);
     expect(errors.join("\n")).toMatch(/puzzle 1: duplicate puzzle id/);
@@ -100,12 +101,24 @@ describe("validateQuizzes", () => {
     expect(errors.join("\n")).toMatch(/quiz "v3": id must be a number/);
     expect(errors.join("\n")).toMatch(/quiz "v3": has no puzzles/);
     expect(errors.join("\n")).toMatch(/quiz "v3": published must be true or false/);
+    expect(errors.join("\n")).toMatch(/quiz "v3": listed must be true or false/);
+  });
+
+  it("accepts numbered and unlisted ids, and never lists an unlisted id", () => {
+    const hidden = { ...sampleQuiz, id: "k3m9x2qv7t", listed: false };
+    expect(validateQuiz(hidden)).toEqual([]);
+    expect(validateQuiz({ ...sampleQuiz, listed: false })).toEqual([]);
+    expect(validateQuiz({ ...hidden, listed: true }).join()).toMatch(/unlisted id can't be listed/);
+    expect(validateQuiz({ ...hidden, id: "K3M9X2QV7T" }).join()).toMatch(/id must be/);
+    expect(validateQuiz({ ...hidden, id: "k3m9x2qv7" }).join()).toMatch(/id must be/);
+    const { listed: _listed, ...noListed } = sampleQuiz;
+    expect(validateQuiz(noListed).join()).toMatch(/listed must be true or false/);
   });
 
   it("copes with malformed data from the database", () => {
     expect(validateQuiz(null)).toEqual(["quiz must be an object"]);
-    expect(validateQuiz({ id: "2", published: true })).toEqual(['quiz "2": has no puzzles']);
-    const errors = validateQuiz({ id: "2", published: true, questions: [null, { id: "x", answer: 5 }] }).join("\n");
+    expect(validateQuiz({ id: "2", published: true, listed: true })).toEqual(['quiz "2": has no puzzles']);
+    const errors = validateQuiz({ id: "2", published: true, listed: true, questions: [null, { id: "x", answer: 5 }] }).join("\n");
     expect(errors).toMatch(/puzzle #1: id must be a whole number/);
     expect(errors).toMatch(/puzzle x: answer must be Chinese/);
     expect(errors).toMatch(/missing pinyin/);
@@ -118,6 +131,7 @@ describe("handleGuess", () => {
     {
       id: "1",
       published: true,
+      listed: true,
       questions: [
         { id: 7, emoji: "🙂", answer: "加油", pinyin: "jiā yóu", meaning: "keep going test", maxGuesses: 5 },
         { id: 9, emoji: "🐟", answer: "摸鱼", pinyin: "mō yú", meaning: "slacking", maxGuesses: 2 },
@@ -126,16 +140,20 @@ describe("handleGuess", () => {
     {
       id: "2",
       published: true,
+      listed: true,
       questions: [{ id: 7, emoji: "🙂", answer: "你好", pinyin: "nǐ hǎo", meaning: "hello", maxGuesses: 3 }],
     },
     {
       id: "3",
       published: false,
+      listed: false,
       questions: [{ id: 1, emoji: "📝", answer: "草稿", pinyin: "cǎo gǎo", meaning: "draft", maxGuesses: 3 }],
     },
   ];
   const guessIn = (quizId: string, questionId: number, g: string, token?: string) =>
     handleGuess({ quizId, questionId, guess: g, token }, SECRET, quizzes);
+  const guessInQuizzes = (list: Quiz[], quizId: string) =>
+    handleGuess({ quizId, questionId: 7, guess: "你好" }, SECRET, list);
   const guess = (g: string, token?: string) => guessIn("1", 7, g, token);
   const ok = (r: ReturnType<typeof handleGuess>) => {
     expect(r.status).toBe(200);
@@ -147,6 +165,18 @@ describe("handleGuess", () => {
     // quiz 3 is newer but a draft, so latest stays on 2
     expect(findQuiz("latest", quizzes)?.id).toBe("2");
     expect(findQuiz("4", quizzes)).toBeUndefined();
+  });
+
+  it("keeps unlisted quizzes off latest but reachable by id", () => {
+    const withHidden: Quiz[] = [
+      ...quizzes,
+      { ...quizzes[1], id: "4", listed: false },
+      { ...quizzes[1], id: "k3m9x2qv7t", listed: false },
+    ];
+    expect(findQuiz("latest", withHidden)?.id).toBe("2");
+    expect(findQuiz("4", withHidden)?.id).toBe("4");
+    expect(findQuiz("k3m9x2qv7t", withHidden)?.id).toBe("k3m9x2qv7t");
+    expect(guessInQuizzes(withHidden, "k3m9x2qv7t").status).toBe(200);
   });
 
   it("hides drafts on the live site but allows them locally", () => {
