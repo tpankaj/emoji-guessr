@@ -52,6 +52,8 @@ export const api = onRequest(
 
       let requested = "";
       if (isQuizLoad) {
+        // Express normally rejects invalid percent-encoding with its own 400 before this
+        // handler runs; this guard only matters if that ever stops being true.
         try {
           requested = decodeURIComponent(quizMatch[1]);
         } catch {
