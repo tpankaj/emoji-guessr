@@ -1,6 +1,7 @@
 import type { Quiz, QuizAlias } from "./types";
 import { HAN_ONLY, chars, score, type Mark } from "./scoring";
 import { signToken, verifyToken, type TokenState } from "./token";
+import { toZhuyin } from "./zhuyin";
 
 export interface PublicQuiz {
   id: string;
@@ -26,6 +27,8 @@ export interface QuizIndex {
 export interface Reveal {
   answer: string;
   pinyin: string;
+  /** Made from the answer's characters, not stored with the quiz. */
+  zhuyin: string;
   meaning: string;
 }
 
@@ -249,7 +252,12 @@ export function handleGuess(input: unknown, secret: string, quizzes: Quiz[], ali
     token: signToken({ v: quiz.id, q: question.id, n, done }, secret),
   };
   if (done) {
-    body.reveal = { answer: question.answer, pinyin: question.pinyin, meaning: question.meaning };
+    body.reveal = {
+      answer: question.answer,
+      pinyin: question.pinyin,
+      zhuyin: toZhuyin(question.answer),
+      meaning: question.meaning,
+    };
   }
   return { status: 200, body };
 }
