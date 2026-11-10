@@ -22,11 +22,10 @@ web/                 Vite + Preact + TypeScript site (Firebase Hosting, served f
 functions/           Cloud Function `api` (Node 22, us-central1): quiz loading, scoring, tokens, logs
   src/game.ts        validation (validateQuiz), release rules (checkUpdate), revisions, aliases, releasing (planPromotion), guess handling
   src/store.ts       QuizStore: loads + validates + caches quizzes and aliases from Firestore
-  src/migration.ts   one-time database migration (delete with `npm run quiz -- migrate` once it has run live)
   src/token.ts       HMAC-signed progress tokens
   src/types.ts       Quiz / Question types (server only — never import from web/)
 scripts/
-  quiz.mjs           npm run quiz: list / new-id / upload / promote / download / delete / migrate
+  quiz.mjs           npm run quiz: list / new-id / upload / promote / download / delete
   quiz-secrets.mjs   shared by both leak checks: loads quizzes/, ALLOWED_PHRASES
   check-leaks.mjs    website leak check (runs in npm run deploy)
   check-commit-leaks.mjs  git commit leak check (run by .githooks/)
@@ -65,13 +64,13 @@ quizzes/             git-ignored local quiz files (working copies; Firestore is 
 ```bash
 npm run install:all     # install functions/ and web/ dependencies
 npm run setup:hooks     # git config core.hooksPath .githooks (once per clone)
-npm test                # vitest in functions/ (game, validation, release rules, store, migration) and web/ (saved progress, share text)
+npm test                # vitest in functions/ (game, validation, release rules, store) and web/ (saved progress, share text)
 npm run build           # functions (tsc, clean lib/) + web (tsc + vite)
 npm run emulators       # build, then functions + hosting + firestore emulators on demo-emoji-guessr
 npm run dev             # Vite at :5173, proxies /api to the functions emulator
 npm run check:leaks     # website leak check
 npm run deploy          # test + build + check:leaks + firebase deploy (functions, hosting, firestore:rules)
-npm run quiz -- <list | new-id | upload <files…> | promote <id> | download <id|all> | delete <id> | migrate> [--emulator] [--yes] [--force]
+npm run quiz -- <list | new-id | upload <files…> | promote <id> | download <id|all> | delete <id>> [--emulator] [--yes] [--force]
 ```
 
 ## Dependency notes
@@ -95,7 +94,6 @@ npm run quiz -- <list | new-id | upload <files…> | promote <id> | download <id
 - **Publishing flow:** `npm run quiz -- new-id` → write `quizzes/<random-id>.json` with `published: false, listed: false` (no `revision`; the script adds it) → test with `--emulator` at `localhost:5050/q/<id>` → set `published: true` and upload to make it an unlisted quiz, playable by its link (send the link to testers; fix feedback by editing and uploading again) → `npm run quiz -- promote <id>` to release it as the next number (the old link keeps working and testers keep their progress). No deploy needed. `promote` also renames the local file to `quizzes/<n>.json`.
 - `upload` refuses a numbered file that isn't the next number, a numbered draft, and a listed random-id quiz; it prints when an edit will restart players' progress (revision bump) and when a publish is unlisted.
 - `delete` works on anything with a random id, never on numbered quizzes or aliases. `download all` refreshes the local files (and so the leak checks).
-- **One-time live migration** (when this model first ships): `npm run quiz -- migrate` gives every released quiz `listed: true` and `revision: 1`, and moves each numbered draft to a random id (writes the new document and deletes the old in one batch). It shows what it will do and asks first, can be run twice safely, and is safe to run before the deploy: the server running today ignores the new fields and drops the random-id drafts as invalid (a few `invalid_quiz` log lines, nothing served live). Run it **before** merging to `main`, because the new server rejects any quiz without `listed` and `revision` and the site would show nothing. Then `npm run quiz -- list`, merge, and remove `functions/src/migration.ts` and the `migrate` command.
 
 ## Leak checks
 
