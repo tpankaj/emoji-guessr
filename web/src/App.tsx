@@ -65,7 +65,7 @@ function QuizPage() {
         if (location.pathname !== quizPath(q.id)) history.replaceState(null, "", quizPath(q.id));
         loadAnalytics();
         setQuiz(q);
-        setProgress(loadProgress(q.id));
+        setProgress(loadProgress(q.id, q.revision, q.previousIds));
         if (!helpSeen()) setShowHelp(true);
       })
       .catch((e: Error) => {

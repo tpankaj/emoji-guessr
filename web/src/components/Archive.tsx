@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { loadAnalytics } from "../analytics";
 import { getQuizIndex } from "../api";
-import { quizPath } from "../share";
+import { isUnlistedId, quizPath } from "../share";
 import { archiveStatus, type ArchiveStatus } from "../storage";
 import type { QuizIndex } from "../types";
 import { Shell } from "./Shell";
@@ -43,9 +43,10 @@ export function Archive() {
         {index.quizzes.map((q) => (
           <li key={q.id}>
             <a class="archive-row" href={quizPath(q.id)}>
-              <span class="archive-num">#{q.id}</span>
+              <span class="archive-num">{isUnlistedId(q.id) ? q.id : `#${q.id}`}</span>
               {q.id === index.latest && <span class="tag latest">Latest</span>}
               {q.draft && <span class="tag">Draft</span>}
+              {q.unlisted && <span class="tag">Unlisted</span>}
               <StatusText status={archiveStatus(q.id, q.count)} count={q.count} />
             </a>
           </li>
