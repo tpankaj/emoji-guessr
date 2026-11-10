@@ -2,6 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import {
+  NUMBERED_ID,
   findQuiz,
   handleGuess,
   latestId,
@@ -20,6 +21,14 @@ const TOKEN_SECRET = defineSecret("TOKEN_SECRET");
 
 const IS_EMULATOR = process.env.FUNCTIONS_EMULATOR === "true";
 
+// Reads of released (frozen) quizzes and the archive list: browsers never cache (max-age=0;
+// a stale browser copy once showed "NaN guesses left"), Firebase Hosting's CDN keeps them 60s
+// and drops its copies on every deploy. A quiz requested by an old random id is cached under
+// that URL, which is fine because it resolves to a frozen numbered quiz. Everything else
+// (random-id quizzes, errors, guesses) stays no-store.
+const CDN_CACHE = "public, max-age=0, s-maxage=60";
+const NO_STORE = "no-store";
+
 // Quizzes live in Firestore. Live: reloaded at most every 5 minutes (so a newly published
 // quiz can take up to 5 minutes to appear). Emulator: reloaded on every request, so uploads
 // show up immediately. A quiz that fails validation is logged and left out.
@@ -28,14 +37,18 @@ const store = new QuizStore(firestoreFetcher(), {
   onInvalid: (id, errors) => logger.error("invalid_quiz", { event: "invalid_quiz", quizId: id, errors }),
 });
 
+// The framework parses the JSON body before our handler runs, so the input caps in request.ts
+// come too late to stop a huge body from being parsed. Cloud Run accepts bodies up to 32 MiB, and
+// a parsed body can take several times its size in memory. More memory and fewer simultaneous
+// requests per instance keep a few large POSTs from exhausting it and failing every other request
+// on the instance. Normal requests take milliseconds, so 20 at a time is plenty.
 export const api = onRequest(
-  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 5, memory: "256MiB" },
+  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 10, memory: "512MiB", concurrency: 20 },
   async (req, res) => {
     // Hosting forwards /api/... with the prefix intact; tolerate both forms.
     const path = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
-    // Never cached: a stale puzzle list paired with a freshly deployed server
-    // would show the wrong lengths or guess limits.
-    res.set("Cache-Control", "no-store");
+    // Not cached unless a handler below opts in with CDN_CACHE.
+    res.set("Cache-Control", NO_STORE);
 
     try {
       // Cheap checks first: route, method and input shape are settled before any quiz is loaded,
@@ -96,6 +109,8 @@ export const api = onRequest(
           res.status(404).json({ error: "Quiz not found" });
           return;
         }
+        // Decided on the returned quiz, so an alias (old random id) counts as its numbered quiz.
+        if (!IS_EMULATOR && NUMBERED_ID.test(quiz.id)) res.set("Cache-Control", CDN_CACHE);
         res.json(publicQuiz(quiz, latestId(quizzes), previousIdsOf(quiz.id, aliases)));
         return;
       }
@@ -103,6 +118,7 @@ export const api = onRequest(
       // GET /quizzes: the archive list (ids and puzzle counts only)
       if (isList) {
         logger.info("quiz_list", { event: "quiz_list" });
+        if (!IS_EMULATOR) res.set("Cache-Control", CDN_CACHE);
         res.json(quizIndex(quizzes, IS_EMULATOR));
         return;
       }
