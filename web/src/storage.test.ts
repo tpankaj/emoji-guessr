@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { archiveStatus, clearProgress, loadProgress, saveProgress } from "./storage";
-import type { Progress } from "./types";
+import { archiveStatus, clearProgress, firstUnfinishedId, loadProgress, saveProgress } from "./storage";
+import type { Progress, QuizIndex } from "./types";
 
 // A minimal localStorage, since the tests run outside a browser. Like the real one, saved
 // items are enumerable properties (clearProgress lists them with Object.keys).
@@ -157,5 +157,52 @@ describe("archiveStatus and clearProgress", () => {
     expect(store.getItem(KEY("5"))).toBeNull();
     expect(store.getItem(KEY("a1b2c3d4e5"))).toBeNull();
     expect(store.getItem("emoji-guessr:help-seen")).toBe("1");
+  });
+});
+
+describe("firstUnfinishedId", () => {
+  const finished = (id: string): Progress => {
+    const p = played(id, 1);
+    p.questions["2"] = { guesses: [], done: true, solved: false };
+    return p;
+  };
+  const index = (...ids: string[]): QuizIndex => ({
+    latest: ids[0] ?? null,
+    quizzes: ids.map((id) => ({ id, count: 2 })),
+  });
+
+  it("opens the oldest quiz when nothing is played", () => {
+    expect(firstUnfinishedId(index("3", "2", "1"))).toBe("1");
+  });
+
+  it("skips finished quizzes, even when a newer one is unfinished", () => {
+    stash(finished("1"));
+    stash(finished("3"));
+    expect(firstUnfinishedId(index("3", "2", "1"))).toBe("2");
+  });
+
+  it("stays on a quiz that is in progress", () => {
+    stash(finished("1"));
+    stash(played("2", 1));
+    expect(firstUnfinishedId(index("3", "2", "1"))).toBe("2");
+  });
+
+  it("falls back to the newest quiz when all are finished", () => {
+    stash(finished("1"));
+    stash(finished("2"));
+    expect(firstUnfinishedId(index("2", "1"))).toBe("2");
+  });
+
+  it("ignores drafts and unlisted quizzes, and returns null when empty", () => {
+    const idx: QuizIndex = {
+      latest: "1",
+      quizzes: [
+        { id: "a1b2c3d4e5", count: 2, unlisted: true },
+        { id: "z9y8x7w6v5", count: 2, draft: true },
+        { id: "1", count: 2 },
+      ],
+    };
+    expect(firstUnfinishedId(idx)).toBe("1");
+    expect(firstUnfinishedId(index())).toBeNull();
   });
 });

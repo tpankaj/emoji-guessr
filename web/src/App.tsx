@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { loadAnalytics } from "./analytics";
-import { ApiError, getQuiz, postGuess } from "./api";
+import { ApiError, getQuiz, getQuizIndex, postGuess } from "./api";
 import { Board, flipDuration } from "./components/Board";
 import { Archive } from "./components/Archive";
 import { HelpModal } from "./components/HelpModal";
@@ -9,13 +9,14 @@ import { ARCHIVE_PATH, Shell } from "./components/Shell";
 import { Summary } from "./components/Summary";
 import { TriedChars } from "./components/TriedChars";
 import { quizPath } from "./share";
-import { clearProgress, emptyQuestion, helpSeen, loadProgress, markHelpSeen, saveProgress } from "./storage";
+import { clearProgress, emptyQuestion, firstUnfinishedId, helpSeen, loadProgress, markHelpSeen, saveProgress } from "./storage";
 import type { Progress, PublicQuiz } from "./types";
 
 const isHan = (ch: string) => /^\p{Script=Han}$/u.test(ch);
 
 /**
- * "/" plays the newest listed quiz; "/q/<id>" plays that quiz forever. The id is a number or
+ * "/" plays the first quiz this player hasn't finished (the newest if they've finished all);
+ * "/q/<id>" plays that quiz forever. The id is a number or
  * a 10-character unlisted id (see isUnlistedId). Anything else isn't a quiz.
  */
 function quizIdFromPath(path: string): string | null {
@@ -58,7 +59,10 @@ function QuizPage() {
       loadAnalytics();
       return;
     }
-    getQuiz(id)
+    // On "/", open the first unfinished quiz. If the list can't be loaded, fall back to the newest.
+    const resolveId = id === "latest" ? getQuizIndex().then(firstUnfinishedId, () => null) : Promise.resolve(id);
+    resolveId
+      .then((resolved) => getQuiz(resolved ?? id))
       .then((q) => {
         // Pin the address to this exact quiz, so a refresh or copied URL keeps
         // playing it even after a newer quiz is published.
