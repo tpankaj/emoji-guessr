@@ -28,8 +28,13 @@ const store = new QuizStore(firestoreFetcher(), {
   onInvalid: (id, errors) => logger.error("invalid_quiz", { event: "invalid_quiz", quizId: id, errors }),
 });
 
+// The framework parses the JSON body before our handler runs, so the input caps in request.ts
+// come too late to stop a huge body from being parsed. Cloud Run accepts bodies up to 32 MiB, and
+// a parsed body can take several times its size in memory. More memory and fewer simultaneous
+// requests per instance keep a few large POSTs from exhausting it and failing every other request
+// on the instance. Normal requests take milliseconds, so 20 at a time is plenty.
 export const api = onRequest(
-  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 5, memory: "256MiB" },
+  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 5, memory: "512MiB", concurrency: 20 },
   async (req, res) => {
     // Hosting forwards /api/... with the prefix intact; tolerate both forms.
     const path = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
