@@ -9,7 +9,7 @@ Live at <https://emojiguessr.io> (also `https://emoji-guessr-e99da.web.app`). Fi
 - **American spelling** everywhere: code, UI text, docs and commit messages ("color", "gray").
 - **Commit only when asked**, and **split unrelated changes into separate commits** — never one big dump. If a file mixes changes, stage partial versions.
 - **Deploy only when asked.** `npm run deploy -- --force` (non-interactive) is how deploys have been run.
-- **Commit messages and code must never contain a draft puzzle** (answer, pinyin, meaning or emoji clue) — the repo is public. The commit hooks check this; don't bypass them.
+- **Commit messages and code must never contain a draft or unlisted puzzle** (answer, pinyin, meaning or emoji clue), or an unlisted quiz's random id — the repo is public. The commit hooks check this; don't bypass them.
 - **Commit messages must not mention copyright, IP, or other games.**
 - **Never put real puzzle answers in tests.** Use obvious fixtures (the tests use 测试题目 / 🧪📝).
 - Don't name other word games anywhere in the project, and keep the game's look its own.
@@ -39,9 +39,10 @@ quizzes/             git-ignored local quiz files (working copies; Firestore is 
 - **Simplified and traditional both count.** `score()` converts guess and answer to simplified one character at a time (`toSimplified` in `functions/src/scoring.ts`, OpenCC data via `opencc-js`, including Taiwan and Hong Kong variants), so 摸魚 solves 摸鱼 and lengths never change. Store answers in simplified; the answer card shows the stored form.
 - **Answers never reach the browser before a puzzle ends.** `GET /api/quiz/<id|latest>` returns only `{id, questions: [{id, emoji, length, maxGuesses}]}`. `POST /api/guess {quizId, questionId, guess, token}` returns `{marks, solved, done, guessesUsed, token, reveal?}`; `reveal` (answer, pinyin, meaning) only when solved or out of guesses. There is no hint.
 - **Progress needs no database.** The token is `base64url(JSON {v: quizId, q: questionId, n: guessesUsed, done}).HMAC-SHA256` with secret `TOKEN_SECRET`. Tokens are bound to quiz + question. Replaying an older token can grant extra guesses but never the answer; this is accepted (honor system, like clearing localStorage).
-- **Quizzes live in Firestore**, collection `quizzes`, document id = quiz id (`"1"`, `"2"`, …), fields `published` (bool) and `questions` (array). Every puzzle requires `id`, `emoji`, `answer` (Chinese characters only), `pinyin`, `meaning`, `maxGuesses` — no defaults.
+- **Quizzes live in Firestore**, collection `quizzes`, document id = quiz id (`"1"`, `"2"`, …), fields `published` (bool), `listed` (bool, required) and `questions` (array). The id is a number, or for a hard-to-find quiz a random 10-character id (`UNLISTED_ID` in `game.ts`, made by `npm run quiz -- new-id`). Every puzzle requires `id`, `emoji`, `answer` (Chinese characters only), `pinyin`, `meaning`, `maxGuesses` — no defaults.
 - **Caching:** `QuizStore` reloads at most every 5 minutes live (every request in the emulator), shares concurrent loads, drops invalid quizzes (logged as `invalid_quiz`) and falls back to the last good set if a reload fails. A newly published quiz can take up to 5 minutes to appear.
-- **Drafts** (`published: false`) are invisible live (`/q/<id>` 404, guesses rejected) but playable in the emulator. `/` plays the highest-numbered **published** quiz and the site pins the URL to `/q/<id>`.
+- **Drafts** (`published: false`) are invisible live (`/q/<id>` 404, guesses rejected) but playable in the emulator. `/` plays the highest-numbered quiz that is **published and listed** and the site pins the URL to `/q/<id>`.
+- **Listed vs. unlisted.** `listed` only decides whether `/` may play a quiz; every published quiz works at `/q/<id>` either way. Toggle it freely with `npm run quiz` (the script says "SHOW"/"HIDE"); hiding never breaks existing links. A quiz with a random id can never be `listed: true` (validation rejects it), and its share text reads `Emoji Guessr (unlisted)` instead of `#<id>`. Unlisted is obscurity, not access control: anyone with the link can play and pass it on. Drafts should keep `listed: false`; set `published` and `listed` together when publishing.
 - **Published quizzes are permanent.** Never unpublish, delete, or change a published quiz's puzzle count/order/ids/emoji/answers/maxGuesses — shared links and saved progress depend on them. Fixing pinyin/meaning is fine. `checkUpdate` enforces this in `npm run quiz`; `--force` overrides (owner used it once, pre-launch, to trim quiz 1).
 - **No caching of the API** (`Cache-Control: no-store`): a stale puzzle list paired with a new server once showed "NaN guesses left".
 - **Saved progress** is per quiz in localStorage (`emoji-guessr:progress:<quizId>`); `emoji-guessr:help-seen` remembers the How to play popup. `?reset` clears progress, on localhost only.
@@ -80,7 +81,7 @@ npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--
 ## Managing quizzes (live)
 
 - `npm run quiz` uses Google Application Default Credentials: `gcloud auth application-default login` with the account that owns the project (the owner has done this). Live writes ask for confirmation unless `--yes`.
-- Publishing flow: write `quizzes/<n>.json` with `published: false` → test with `--emulator` at `localhost:5050/q/<n>` → optionally upload the draft live → set `published: true` and upload. No deploy needed.
+- Publishing flow: write `quizzes/<n>.json` with `published: false` → test with `--emulator` at `localhost:5050/q/<n>` → optionally upload the draft live → set `published: true` (and `listed: true` for the main site, or leave it `false` for an unlisted quiz) and upload. No deploy needed.
 - `delete` only works on drafts. `download all` refreshes the local files (and so the leak checks).
 
 ## Leak checks
@@ -88,7 +89,7 @@ npm run quiz -- <list | upload <files…> | download <id|all> | delete <id>> [--
 Both read the local `quizzes/` files and skip with a warning if there are none.
 
 - **Website** (`check-leaks.mjs`): fails if any quiz's answer, pinyin or meaning is in `web/dist`; warns on single answer characters.
-- **Commits** (`check-commit-leaks.mjs` via hooks): blocks added lines or commit messages containing a **draft** puzzle's answer, pinyin, meaning or full emoji clue. Anything also in a published quiz counts as public and passes. Takes ~0.06s.
+- **Commits** (`check-commit-leaks.mjs` via hooks): blocks added lines or commit messages containing a **draft or unlisted** puzzle's answer, pinyin, meaning or full emoji clue, or an unlisted quiz's random id. Anything also in a published, listed quiz counts as public and passes. Takes ~0.06s.
 - `ALLOWED_PHRASES` in `quiz-secrets.mjs` lists UI phrases that contain an answer but are fine (下次加油！, 加油！).
 - Git history was rewritten once to remove a draft puzzle that had been committed; don't reintroduce answers.
 

@@ -35,6 +35,7 @@ Write a quiz file in `quizzes/` (this folder is ignored by git):
 {
   "id": "1",
   "published": true,
+  "listed": true,
   "questions": [
     { "id": 1, "emoji": "➕⛽️", "answer": "加油", "pinyin": "jiā yóu", "meaning": "“Add oil!” — keep going", "maxGuesses": 2 }
   ]
@@ -47,7 +48,7 @@ Upload it to your local database and play it:
 npm run quiz -- upload quizzes/1.json --emulator
 ```
 
-Without `--emulator`, the same command uploads to the live site. Quizzes with `"published": false` are drafts that only you can play locally.
+Without `--emulator`, the same command uploads to the live site. Quizzes with `"published": false` are drafts that only you can play locally. A published quiz with `"listed": false` stays off the main page but works at its own link; for a hard-to-guess link, give it a random id from `npm run quiz -- new-id` instead of a number.
 
 ## Deploying
 
