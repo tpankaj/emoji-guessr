@@ -402,6 +402,11 @@ body {
   font-size: 1.2rem;
   color: var(--muted);
 }
+.reveal-zhuyin {
+  font-size: 1.05rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
 .reveal-meaning {
   margin: 10px 0 18px;
 }

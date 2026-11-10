@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { QuestionState } from "../types";
+import { pinyinToZhuyin } from "../zhuyin";
 
 // Indexed by guesses used (1 → 天才, 5 → 好险)
 const PRAISE = ["天才！", "太棒了！", "厉害！", "不错！", "好险！"];
@@ -20,6 +21,7 @@ export function RevealCard({ state, isLast, delayMs, onNext }: Props) {
 
   if (!state.reveal) return null;
   const { answer, pinyin, meaning } = state.reveal;
+  const zhuyin = pinyinToZhuyin(pinyin);
   const n = state.guesses.length;
   const headline = state.solved ? PRAISE[Math.min(n, PRAISE.length) - 1] : "下次加油！";
 
@@ -33,6 +35,11 @@ export function RevealCard({ state, isLast, delayMs, onNext }: Props) {
         {answer}
       </div>
       <div class="reveal-pinyin">{pinyin}</div>
+      {zhuyin && (
+        <div class="reveal-zhuyin" lang="zh-TW">
+          {zhuyin}
+        </div>
+      )}
       <div class="reveal-meaning">{meaning}</div>
       <button ref={btnRef} class="btn primary wide" onClick={onNext}>
         {isLast ? "See results" : "Next puzzle →"}
