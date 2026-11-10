@@ -406,6 +406,19 @@ body {
   font-size: 1.05rem;
   color: var(--muted);
   margin-top: 2px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 0.7em;
+}
+.zy-syl {
+  white-space: nowrap;
+}
+.zy-tone {
+  font-size: 0.8em;
+  vertical-align: 0.45em;
+  margin-left: 0.05em;
+  line-height: 0;
 }
 .reveal-meaning {
   margin: 10px 0 18px;

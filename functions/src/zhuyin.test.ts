@@ -6,8 +6,8 @@ describe("toZhuyin", () => {
     expect(toZhuyin("测试题目")).toBe("ㄘㄜˋ ㄕˋ ㄊㄧˊ ㄇㄨˋ");
   });
 
-  it("puts the neutral-tone dot in front", () => {
-    expect(toZhuyin("桌子")).toBe("ㄓㄨㄛ ˙ㄗ");
+  it("puts the neutral-tone dot after the syllable, like the other tone marks", () => {
+    expect(toZhuyin("桌子")).toBe("ㄓㄨㄛ ㄗ˙");
   });
 
   it("reads a polyphonic character from its word", () => {

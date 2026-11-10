@@ -35,7 +35,16 @@ export function RevealCard({ state, isLast, delayMs, onNext }: Props) {
       <div class="reveal-pinyin">{pinyin}</div>
       {zhuyin && (
         <div class="reveal-zhuyin" lang="zh-TW">
-          {zhuyin}
+          {zhuyin.split(" ").map((syllable, i) => {
+            // The tone mark (or the neutral-tone dot) goes at the top right of the syllable.
+            const [, symbols, tone] = /^(.*?)([ˊˇˋ˙]?)$/.exec(syllable)!;
+            return (
+              <span class="zy-syl" key={i}>
+                {symbols}
+                {tone && <span class="zy-tone">{tone}</span>}
+              </span>
+            );
+          })}
         </div>
       )}
       <div class="reveal-meaning">{meaning}</div>
