@@ -34,7 +34,7 @@ const store = new QuizStore(firestoreFetcher(), {
 // requests per instance keep a few large POSTs from exhausting it and failing every other request
 // on the instance. Normal requests take milliseconds, so 20 at a time is plenty.
 export const api = onRequest(
-  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 5, memory: "512MiB", concurrency: 20 },
+  { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 10, memory: "512MiB", concurrency: 20 },
   async (req, res) => {
     // Hosting forwards /api/... with the prefix intact; tolerate both forms.
     const path = req.path.replace(/^\/api(?=\/|$)/, "") || "/";
