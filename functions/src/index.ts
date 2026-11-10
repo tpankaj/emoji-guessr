@@ -6,6 +6,7 @@ import {
   handleGuess,
   latestId,
   playableQuizzes,
+  previousIdsOf,
   publicQuiz,
   quizIndex,
   type GuessResponse,
@@ -82,29 +83,32 @@ export const api = onRequest(
       }
 
       // Drafts (published: false) are playable only in the local emulator, never live.
-      const quizzes = playableQuizzes(await store.all(), IS_EMULATOR);
+      // Aliases let a quiz released under a number still answer to its old random id.
+      const snapshot = await store.snapshot();
+      const quizzes = playableQuizzes(snapshot.quizzes, IS_EMULATOR);
+      const { aliases } = snapshot;
 
       // GET /quiz/<id> or /quiz/latest
       if (isQuizLoad) {
-        const quiz = findQuiz(requested, quizzes);
+        const quiz = findQuiz(requested, quizzes, aliases);
         logger.info("quiz_load", { event: "quiz_load", requested: clip(requested), quizId: quiz?.id ?? null });
         if (!quiz) {
           res.status(404).json({ error: "Quiz not found" });
           return;
         }
-        res.json(publicQuiz(quiz, latestId(quizzes)));
+        res.json(publicQuiz(quiz, latestId(quizzes), previousIdsOf(quiz.id, aliases)));
         return;
       }
 
       // GET /quizzes: the archive list (ids and puzzle counts only)
       if (isList) {
         logger.info("quiz_list", { event: "quiz_list" });
-        res.json(quizIndex(quizzes));
+        res.json(quizIndex(quizzes, IS_EMULATOR));
         return;
       }
 
       const { quizId, questionId, guess } = req.body as Record<string, unknown>;
-      const result = handleGuess(req.body, TOKEN_SECRET.value(), quizzes);
+      const result = handleGuess(req.body, TOKEN_SECRET.value(), quizzes, aliases);
       if (result.status === 200) {
         const r = result.body as GuessResponse;
         logger.info("guess", {

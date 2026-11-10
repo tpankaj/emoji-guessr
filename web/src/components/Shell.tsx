@@ -1,4 +1,4 @@
-import { quizPath } from "../share";
+import { isUnlistedId, quizPath } from "../share";
 import type { Progress, PublicQuiz } from "../types";
 
 export const ARCHIVE_PATH = "/archive";
@@ -39,7 +39,7 @@ export function Shell({ children, onHelp, quiz, progress, onArchive }: Props) {
       {quiz && progress && (
         <>
           <div class="quiz-bar">
-            <span class="muted">Quiz #{quiz.id}</span>
+            <span class="muted">{isUnlistedId(quiz.id) ? "Unlisted quiz" : `Quiz #${quiz.id}`}</span>
             {quiz.latest && Number(quiz.latest) > Number(quiz.id) && (
               <a href={quizPath(quiz.latest)}>Newer quiz: #{quiz.latest} →</a>
             )}

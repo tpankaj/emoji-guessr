@@ -1,4 +1,4 @@
-// Blocks a commit that would put a draft puzzle into the git repo (see repoSecrets in
+// Blocks a commit that would put a hidden (draft or unlisted) quiz into the git repo (see repoSecrets in
 // quiz-secrets.mjs for exactly what counts). Run by the git hooks in .githooks/:
 //
 //   node scripts/check-commit-leaks.mjs --staged            the changes being committed
@@ -45,7 +45,7 @@ for (const [where, text] of chunks) {
   for (const s of secrets) if (clean.includes(s)) hits.push(`  ${where}: "${s}"`);
 }
 if (hits.length) {
-  console.error("✖ Commit blocked: it contains part of a draft puzzle from quizzes/:");
+  console.error("✖ Commit blocked: it contains part of a draft or unlisted quiz from quizzes/:");
   console.error(hits.join("\n"));
   console.error("Remove it, or if it's really fine, commit with --no-verify.");
   process.exit(1);

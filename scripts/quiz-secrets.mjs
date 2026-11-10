@@ -39,13 +39,18 @@ export function websiteSecrets(quizzes) {
 
 /**
  * What must stay out of the git repo: the answer, pinyin, meaning and emoji clue of every
- * draft puzzle. Anything that also appears in a published quiz is already public (anyone can
- * play it), so it's left out.
+ * puzzle that isn't public, plus the id of every quiz with a random (unlisted) id, because
+ * that id is the secret part of its link. A puzzle is public only if its quiz is published
+ * and listed: an unlisted quiz is playable, but only by people who were given the link.
+ * Anything that also appears in a public quiz is already out there, so it's left out.
  */
 export function repoSecrets(quizzes) {
   const fields = ["answer", "pinyin", "meaning", "emoji"];
-  const published = new Set(values(quizzes.filter((q) => q.published), fields));
-  const drafts = values(quizzes.filter((q) => !q.published), fields);
+  // Public = released: published, listed and numbered (the listed flag follows from the id).
+  const isPublic = (q) => q.published && q.listed;
+  const published = new Set(values(quizzes.filter(isPublic), fields));
+  const hidden = values(quizzes.filter((q) => !isPublic(q)), fields);
+  const randomIds = quizzes.map((q) => q.id).filter((id) => typeof id === "string" && /[a-z]/.test(id));
   // Single emoji (e.g. "🐍") are too common to block on; whole clues are what give puzzles away.
-  return [...new Set(drafts)].filter((v) => !published.has(v) && Array.from(v).length > 1);
+  return [...new Set(hidden)].filter((v) => !published.has(v) && Array.from(v).length > 1).concat(randomIds);
 }

@@ -12,6 +12,10 @@ export interface PublicQuestion {
 
 export interface PublicQuiz {
   id: string;
+  /** Saved progress from another revision is dropped (an edit made it wrong). */
+  revision: number;
+  /** Ids this quiz had before release; progress saved under them moves to `id`. */
+  previousIds: string[];
   /** The newest published quiz's id. */
   latest: string | null;
   questions: PublicQuestion[];
@@ -20,7 +24,7 @@ export interface PublicQuiz {
 /** GET /api/quizzes: every quiz a player can reach, newest first. */
 export interface QuizIndex {
   latest: string | null;
-  quizzes: { id: string; count: number; draft?: true }[];
+  quizzes: { id: string; count: number; draft?: true; unlisted?: true }[];
 }
 
 export interface Reveal {
@@ -53,6 +57,8 @@ export interface QuestionState {
 
 export interface Progress {
   quizId: string;
+  /** Missing in progress saved before revisions existed, which counts as revision 1. */
+  revision?: number;
   current: number;
   questions: Record<string, QuestionState>;
 }

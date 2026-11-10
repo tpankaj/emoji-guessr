@@ -6,16 +6,43 @@ const HELP_KEY = "emoji-guessr:help-seen";
 
 export const emptyQuestion = (): QuestionState => ({ guesses: [], done: false, solved: false });
 
-export function loadProgress(quizId: string): Progress {
+/** What is saved under this quiz id, if it is usable. */
+function readSaved(quizId: string): Progress | null {
   try {
     const saved = JSON.parse(localStorage.getItem(PROGRESS_PREFIX + quizId) ?? "null");
-    if (saved?.quizId === quizId && typeof saved.current === "number" && saved.questions) {
-      return saved;
-    }
+    if (saved?.quizId === quizId && typeof saved.current === "number" && saved.questions) return saved;
   } catch {
-    // storage unavailable or corrupt: start fresh
+    // storage unavailable or corrupt: treat as nothing saved
   }
-  return { quizId, current: 0, questions: {} };
+  return null;
+}
+
+/** Progress saved before revisions existed has no revision, which means revision 1. */
+const revisionOf = (p: Progress) => p.revision ?? 1;
+
+/**
+ * Saved progress for a quiz. Progress from another revision is ignored (an edit made it
+ * wrong). If nothing is saved under `quizId`, progress saved under one of the quiz's
+ * `previousIds` (it was released under a number) moves over, so testers keep their place.
+ */
+export function loadProgress(quizId: string, revision = 1, previousIds: string[] = []): Progress {
+  const fresh: Progress = { quizId, revision, current: 0, questions: {} };
+  const own = readSaved(quizId);
+  if (own) return revisionOf(own) === revision ? { ...own, revision } : fresh;
+
+  for (const oldId of previousIds) {
+    const old = readSaved(oldId);
+    if (!old || revisionOf(old) !== revision) continue;
+    const moved: Progress = { ...old, quizId, revision };
+    saveProgress(moved);
+    try {
+      localStorage.removeItem(PROGRESS_PREFIX + oldId);
+    } catch {
+      // ignore: the copy under the new id is what counts
+    }
+    return moved;
+  }
+  return fresh;
 }
 
 export function saveProgress(p: Progress) {
@@ -59,7 +86,7 @@ export type ArchiveStatus =
 
 /** How far this player got in a quiz, from saved progress, for the archive list. */
 export function archiveStatus(quizId: string, count: number): ArchiveStatus {
-  const states = Object.values(loadProgress(quizId).questions);
+  const states = Object.values(readSaved(quizId)?.questions ?? {});
   const played = states.filter((s) => s.done).length;
   if (played >= count) return { kind: "done", solved: states.filter((s) => s.solved).length };
   if (played > 0 || states.some((s) => s.guesses.length > 0)) return { kind: "playing", played };

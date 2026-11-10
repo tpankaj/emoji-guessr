@@ -8,6 +8,9 @@ export function solvedCount(quiz: PublicQuiz, progress: Progress): number {
   return quiz.questions.filter((q) => progress.questions[q.id]?.solved).length;
 }
 
+/** Unlisted quizzes use a random id instead of a number (never all digits). */
+export const isUnlistedId = (quizId: string) => /^(?=[a-z0-9]*[a-z])[a-z0-9]{10}$/.test(quizId);
+
 /** The permanent link to a quiz, used in the share text and the address bar. */
 export const quizPath = (quizId: string) => `/q/${quizId}`;
 
@@ -21,7 +24,8 @@ export function buildShareText(quiz: PublicQuiz, progress: Progress, origin: str
     const rows = (state?.guesses ?? []).map((g) => g.marks.map((m) => SQUARE[m]).join(""));
     return `${i + 1}. ${rows.join(" ")}${state?.solved ? "" : " ❌"}`;
   });
-  const heading = `${GAME_TITLE} #${quiz.id}  ${solvedCount(quiz, progress)}/${quiz.questions.length}`;
+  const name = isUnlistedId(quiz.id) ? `${GAME_TITLE} (unlisted)` : `${GAME_TITLE} #${quiz.id}`;
+  const heading = `${name}  ${solvedCount(quiz, progress)}/${quiz.questions.length}`;
   return [heading, ...lines, origin + quizPath(quiz.id)].join("\n");
 }
 
