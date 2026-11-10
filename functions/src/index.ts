@@ -31,7 +31,30 @@ const store = new QuizStore(firestoreFetcher(), {
  * so they can be filtered and counted (see README → "Logs and stats").
  * Never log tokens or anything identifying a player.
  */
-const clip = (v: unknown, max = 40) => (typeof v === "string" ? v.slice(0, max) : v);
+const clip = (v: unknown, max = 40) => {
+  if (typeof v === "string") return v.slice(0, max);
+  return typeof v === "number" || typeof v === "boolean" || v == null ? v : typeof v;
+};
+
+// Input caps. Real values are far smaller: ids are short numbers, guesses are a few
+// characters, tokens are ~100 characters.
+const MAX_ID_LENGTH = 64;
+const MAX_GUESS_LENGTH = 64;
+const MAX_TOKEN_LENGTH = 512;
+
+/** Shape check for POST /guess, run before quizzes load. Returns an error message, or null if fine. */
+function guessShapeError(body: unknown): string | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return "Invalid request";
+  const { quizId, questionId, guess, token } = body as Record<string, unknown>;
+  if (typeof quizId !== "string" || quizId.length === 0 || quizId.length > MAX_ID_LENGTH) return "Unknown quiz";
+  if (!Number.isInteger(questionId)) return "Unknown question";
+  if (typeof guess !== "string") return "Missing guess";
+  if (guess.length > MAX_GUESS_LENGTH) return "Guess is too long";
+  if (token !== undefined && token !== null && (typeof token !== "string" || token.length > MAX_TOKEN_LENGTH)) {
+    return "Invalid progress token";
+  }
+  return null;
+}
 
 export const api = onRequest(
   { secrets: [TOKEN_SECRET], region: "us-central1", maxInstances: 5, memory: "256MiB" },
@@ -43,13 +66,53 @@ export const api = onRequest(
     res.set("Cache-Control", "no-store");
 
     try {
+      // Cheap checks first: route, method and input shape are settled before any quiz is loaded,
+      // so malformed or unknown requests never touch Firestore.
+      const quizMatch = /^\/quiz\/([^/]+)$/.exec(path);
+      const isQuizLoad = req.method === "GET" && quizMatch !== null;
+      const isList = req.method === "GET" && path === "/quizzes";
+      const isGuess = req.method === "POST" && path === "/guess";
+
+      if (!isQuizLoad && !isList && !isGuess) {
+        logger.info("not_found", { event: "not_found", method: clip(req.method, 10), path: clip(path, 100) });
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+
+      let requested = "";
+      if (isQuizLoad) {
+        try {
+          requested = decodeURIComponent(quizMatch[1]);
+        } catch {
+          requested = "";
+        }
+        if (!requested || requested.length > MAX_ID_LENGTH) {
+          res.status(404).json({ error: "Quiz not found" });
+          return;
+        }
+      }
+
+      if (isGuess) {
+        const problem = guessShapeError(req.body);
+        if (problem) {
+          const b = (req.body ?? {}) as Record<string, unknown>;
+          logger.warn("guess_rejected", {
+            event: "guess_rejected",
+            status: 400,
+            reason: problem,
+            quizId: clip(b.quizId),
+            questionId: clip(b.questionId),
+          });
+          res.status(400).json({ error: problem });
+          return;
+        }
+      }
+
       // Drafts (published: false) are playable only in the local emulator, never live.
       const quizzes = playableQuizzes(await store.all(), IS_EMULATOR);
 
       // GET /quiz/<id> or /quiz/latest
-      const quizMatch = /^\/quiz\/([^/]+)$/.exec(path);
-      if (req.method === "GET" && quizMatch) {
-        const requested = decodeURIComponent(quizMatch[1]);
+      if (isQuizLoad) {
         const quiz = findQuiz(requested, quizzes);
         logger.info("quiz_load", { event: "quiz_load", requested: clip(requested), quizId: quiz?.id ?? null });
         if (!quiz) {
@@ -61,41 +124,36 @@ export const api = onRequest(
       }
 
       // GET /quizzes: the archive list (ids and puzzle counts only)
-      if (req.method === "GET" && path === "/quizzes") {
+      if (isList) {
         logger.info("quiz_list", { event: "quiz_list" });
         res.json(quizIndex(quizzes));
         return;
       }
 
-      if (req.method === "POST" && path === "/guess") {
-        const { quizId, questionId, guess } = (req.body ?? {}) as Record<string, unknown>;
-        const result = handleGuess(req.body, TOKEN_SECRET.value(), quizzes);
-        if (result.status === 200) {
-          const r = result.body as GuessResponse;
-          logger.info("guess", {
-            event: "guess",
-            quizId,
-            questionId,
-            guess: clip(guess),
-            guessNumber: r.guessesUsed,
-            solved: r.solved,
-            done: r.done,
-          });
-        } else {
-          logger.warn("guess_rejected", {
-            event: "guess_rejected",
-            status: result.status,
-            reason: (result.body as { error: string }).error,
-            quizId: clip(quizId),
-            questionId: clip(questionId),
-          });
-        }
-        res.status(result.status).json(result.body);
-        return;
+      const { quizId, questionId, guess } = req.body as Record<string, unknown>;
+      const result = handleGuess(req.body, TOKEN_SECRET.value(), quizzes);
+      if (result.status === 200) {
+        const r = result.body as GuessResponse;
+        logger.info("guess", {
+          event: "guess",
+          quizId: clip(quizId),
+          questionId,
+          guess: clip(guess),
+          guessNumber: r.guessesUsed,
+          solved: r.solved,
+          done: r.done,
+        });
+      } else {
+        logger.warn("guess_rejected", {
+          event: "guess_rejected",
+          status: result.status,
+          reason: (result.body as { error: string }).error,
+          quizId: clip(quizId),
+          questionId: clip(questionId),
+        });
       }
-
-      logger.info("not_found", { event: "not_found", method: req.method, path: clip(path, 100) });
-      res.status(404).json({ error: "Not found" });
+      res.status(result.status).json(result.body);
+      return;
     } catch (err) {
       logger.error("error", { event: "error", method: req.method, path: clip(path, 100), err });
       res.status(500).json({ error: "Something went wrong" });
