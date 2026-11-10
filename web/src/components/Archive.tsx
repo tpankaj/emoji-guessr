@@ -68,7 +68,7 @@ export function Archive() {
 function StatusText({ status, count }: { status: ArchiveStatus; count: number }) {
   switch (status.kind) {
     case "new":
-      return <span class="archive-status muted">{count} puzzles</span>;
+      return <span class="archive-status muted">{count} {count === 1 ? "puzzle" : "puzzles"}</span>;
     case "playing":
       return (
         <span class="archive-status">
