@@ -167,9 +167,34 @@ describe("requests that do load quizzes", () => {
     expect(r.body).toEqual({ error: "Quiz not found" });
   });
 
-  it("sets Cache-Control: no-store on every response", async () => {
-    for (const [m, p] of [["GET", "/nope"], ["GET", "/quizzes"], ["POST", "/guess"]]) {
-      expect((await call(m, p, m === "POST" ? guess() : undefined)).headers["Cache-Control"]).toBe("no-store");
+  it("lets the CDN cache released quizzes and the archive list for 60 seconds", async () => {
+    const cdn = "public, max-age=0, s-maxage=60";
+    for (const path of ["/quiz/latest", "/quiz/1", "/api/quiz/2", "/quiz/a1b2c3d4e5", "/quizzes", "/api/quizzes"]) {
+      const r = await call("GET", path);
+      expect(r.status, path).toBe(200);
+      expect(r.headers["Cache-Control"], path).toBe(cdn);
+    }
+  });
+
+  it("never caches unlisted quizzes, errors or guesses", async () => {
+    const unlisted = await call("GET", "/quiz/k3m9x2qv7t");
+    expect(unlisted.status).toBe(200);
+    expect(unlisted.headers["Cache-Control"]).toBe("no-store");
+    const missing = await call("GET", "/quiz/99");
+    expect(missing.status).toBe(404);
+    expect(missing.headers["Cache-Control"]).toBe("no-store");
+    expect((await call("GET", "/nope")).headers["Cache-Control"]).toBe("no-store");
+    const ok = await call("POST", "/guess", guess());
+    expect(ok.status).toBe(200);
+    expect(ok.headers["Cache-Control"]).toBe("no-store");
+    const bad = await call("POST", "/guess", guess({ guess: "abcd" }));
+    expect(bad.status).toBe(400);
+    expect(bad.headers["Cache-Control"]).toBe("no-store");
+    snapshot.mockRejectedValue(new Error("firestore down"));
+    for (const path of ["/quizzes", "/quiz/1"]) {
+      const err = await call("GET", path);
+      expect(err.status, path).toBe(500);
+      expect(err.headers["Cache-Control"], path).toBe("no-store");
     }
   });
 
